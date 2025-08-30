@@ -9,22 +9,36 @@ from extract_slice import load_mask, extract_axial_slices_from_sagittal_mask, re
 from seg import run_nnunet_predict_and_overlay
 from compute import process_all
 
-def main():
+def main(input_folder, output_folder):
     # 输出目录
-    dicom_folder = "1504425"
-    # L3相关
-    L3_png_folder = f"L3_png_{dicom_folder}"
-    L3_mask_folder = f"L3_mask_{dicom_folder}"
-    L3_cleaned_mask_folder = f"L3_clean_mask_{dicom_folder}"
-    L3_overlay_folder = f"L3_overlay_{dicom_folder}"  # 需要展示在前端
-    # 横切图
-    slice_folder = f"Axisal_{dicom_folder}"
-    # 肌肉分割
-    full_mask_folder = f"full_mask_{dicom_folder}"
-    clean_full_mask_folder = f"clean_{dicom_folder}"
-    full_overlay_folder = f"full_overlay_{dicom_folder}" # 展示在前端
-    major_mask_folder = f"major_mask_{dicom_folder}"
-    major_overlay_folder = f"major_overlay_{dicom_folder}" # 展示在前端
+    # dicom_folder = "1504425"
+    # # L3相关
+    # L3_png_folder = f"L3_png_{dicom_folder}"
+    # L3_mask_folder = f"L3_mask_{dicom_folder}"
+    # L3_cleaned_mask_folder = f"L3_clean_mask_{dicom_folder}"
+    # L3_overlay_folder = f"L3_overlay_{dicom_folder}"  # 需要展示在前端
+    # # 横切图
+    # slice_folder = f"Axisal_{dicom_folder}"
+    # # 肌肉分割
+    # full_mask_folder = f"full_mask_{dicom_folder}"
+    # clean_full_mask_folder = f"clean_{dicom_folder}"
+    # full_overlay_folder = f"full_overlay_{dicom_folder}" # 展示在前端
+    # major_mask_folder = f"major_mask_{dicom_folder}"
+    # major_overlay_folder = f"major_overlay_{dicom_folder}" # 展示在前端
+
+    dicom_folder = input_folder
+    # 所有输出目录都在 output_folder 下
+    L3_png_folder = os.path.join(output_folder, "L3_png")
+    L3_mask_folder = os.path.join(output_folder, "L3_mask")
+    L3_cleaned_mask_folder = os.path.join(output_folder, "L3_clean_mask")
+    L3_overlay_folder = os.path.join(output_folder, "L3_overlay")
+    slice_folder = os.path.join(output_folder, "Axisal")
+    full_mask_folder = os.path.join(output_folder, "full_mask")
+    clean_full_mask_folder = os.path.join(output_folder, "clean")
+    full_overlay_folder = os.path.join(output_folder, "full_overlay")
+    major_mask_folder = os.path.join(output_folder, "major_mask")
+    major_overlay_folder = os.path.join(output_folder, "major_overlay")
+
 
     # 模型路径
     L3_model_dir = "nnUNet_results/Dataset003_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
