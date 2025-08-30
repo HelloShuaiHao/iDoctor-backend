@@ -7,6 +7,8 @@ DATA_ROOT = "data"
 
 
 # 测试命令 curl -F "patient_name=张三" -F "study_date=20230830" -F "file=@test.zip" http://localhost:8000/upload_dicom_zip
+import zipfile
+
 @app.post("/upload_dicom_zip")
 async def upload_dicom_zip(
     patient_name: str = Form(...),
@@ -20,7 +22,15 @@ async def upload_dicom_zip(
     zip_path = os.path.join(patient_root, file.filename)
     with open(zip_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
+    # 解压时将所有文件直接放到 input_folder
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(input_folder)
+        for member in zip_ref.namelist():
+            filename = os.path.basename(member)
+            if not filename:
+                continue  # 跳过文件夹
+            source = zip_ref.open(member)
+            target = open(os.path.join(input_folder, filename), "wb")
+            with source, target:
+                shutil.copyfileobj(source, target)
     return {"folder": folder_name, "message": "上传并解压成功"}
 
