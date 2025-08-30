@@ -52,10 +52,3 @@ python all_new.py
 - 主要输出目录见 all_new.py 变量定义部分
 
 ---
-
-如需详细了解每一步的实现，可参考对应函数的源码链接：  
-- `main`  
-- `run_nnunet_predict_and_overlay`  
-- `process_all`  
-- `resize_and_save_sagittal_as_dicom`  
-- `convert_selected_slices`
