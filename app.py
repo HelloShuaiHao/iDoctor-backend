@@ -49,3 +49,18 @@ def process_case(patient_name: str, study_date: str):
         "message": "处理完成",
         "output_dir": output_folder
     }
+
+@app.get("/list_patients")
+def list_patients():
+    patient_folders = [
+        name for name in os.listdir(DATA_ROOT)
+        if os.path.isdir(os.path.join(DATA_ROOT, name))
+    ]
+    # 转换为 病人-日期 格式
+    patient_date_list = [
+        name.replace("_", "-") for name in patient_folders
+    ]
+    return {
+        "count": len(patient_date_list),
+        "patients": patient_date_list
+    }
