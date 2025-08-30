@@ -2,6 +2,8 @@ from fastapi import FastAPI, UploadFile, File, Form
 import shutil, os
 import zipfile
 import zipfile
+import os
+from fastapi.responses import FileResponse
 from all_new import main  # 重构 main 
 
 app = FastAPI()
@@ -50,6 +52,7 @@ def process_case(patient_name: str, study_date: str):
         "output_dir": output_folder
     }
 
+# 返回所有文件夹的 病人-日期 列表
 @app.get("/list_patients")
 def list_patients():
     patient_folders = [
@@ -64,3 +67,38 @@ def list_patients():
         "count": len(patient_date_list),
         "patients": patient_date_list
     }
+
+
+# 根据病人名字和日期，返回 full_overlay 文件夹下的关键数据（两个 csv 文件和所有以 middle 结尾的图片）
+@app.get("/get_key_results/{patient_name}/{study_date}")
+def get_key_results(patient_name: str, study_date: str):
+    folder_name = f"{patient_name}_{study_date}"
+    full_overlay_folder = os.path.join(DATA_ROOT, folder_name, "output", "full_overlay")
+    if not os.path.exists(full_overlay_folder):
+        return {"error": "结果文件夹不存在"}
+
+    files = os.listdir(full_overlay_folder)
+    csv_files = [f for f in files if f.endswith(".csv")]
+    middle_images = [f for f in files if f.endswith("middle.png")]
+
+    # 读取 CSV 文件内容
+    csv_contents = {}
+    for f in csv_files:
+        file_path = os.path.join(full_overlay_folder, f)
+        with open(file_path, "r", encoding="utf-8") as file:
+            csv_contents[f] = file.read()
+
+    # 只返回 middle 图片的文件名
+    return {
+        "csv_files": csv_contents,      # {文件名: 内容}
+        "middle_images": middle_images  # [文件名, ...]
+    }
+
+# 直接传输图片文件
+@app.get("/get_image/{patient_name}/{study_date}/{filename}")
+def get_image(patient_name: str, study_date: str, filename: str):
+    folder_name = f"{patient_name}_{study_date}"
+    img_path = os.path.join(DATA_ROOT, folder_name, "output", "full_overlay", filename)
+    if not os.path.exists(img_path):
+        return {"error": "图片不存在"}
+    return FileResponse(img_path, media_type="image/png")    
