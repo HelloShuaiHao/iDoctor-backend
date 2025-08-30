@@ -1,4 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
+
 import shutil, os
 import zipfile
 import zipfile
@@ -7,6 +9,24 @@ from fastapi.responses import FileResponse
 from all_new import main  # 重构 main 
 
 app = FastAPI()
+# 允许的前端来源
+origins = [
+    "http://localhost:7500",
+    "http://127.0.0.1:7500",
+    "http://ai.bygpu.com:55304",
+    "https://ai.bygpu.com:55304",
+    "http://ai.bygpu.com",
+    "https://ai.bygpu.com",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,      # 或用 ["*"] 临时放开所有
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 DATA_ROOT = "data"
 
 # 测试命令 curl -F "patient_name=张三" -F "study_date=20230830" -F "file=@test.zip" http://localhost:8000/upload_dicom_zip
