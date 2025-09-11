@@ -98,12 +98,12 @@ def dicom_to_balanced_png(
     input_path = os.path.join(out_dir, input_name)
     clean_path = os.path.join(out_dir, clean_name)
 
-    tmp_input = input_path + ".tmp"
+    tmp_input = input_path + ".part.png"
     img.save(tmp_input)
     os.replace(tmp_input, input_path)
 
-    tmp_clean = clean_path + ".tmp"
-    shutil.copyfile(input_path, tmp_clean)
+    tmp_clean = clean_path + ".part.png"
+    img.save(tmp_clean)
     os.replace(tmp_clean, clean_path)
 
     return input_path, clean_path
