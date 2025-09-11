@@ -8,6 +8,7 @@ import os
 from fastapi.responses import FileResponse
 from all_new import main 
 from all_new import l3_detect, continue_after_l3
+from fastapi.responses import FileResponse
 
 
 app = FastAPI()
@@ -142,3 +143,14 @@ def api_continue_after_l3(patient_name: str, study_date: str):
     output_folder = os.path.join(DATA_ROOT, folder, "output")
     result = continue_after_l3(input_folder, output_folder)
     return result
+
+
+@app.get("/get_output_image/{patient_name}/{study_date}/{folder}/{filename}")
+def get_output_image(patient_name: str, study_date: str, folder: str, filename: str):
+    # folder 例如 L3_overlay、L3_clean_mask、L3_png 等
+    file_path = os.path.join(
+        DATA_ROOT, f"{patient_name}_{study_date}", "output", folder, filename
+    )
+    if not os.path.exists(file_path):
+        return {"error": "图片不存在"}
+    return FileResponse(file_path, media_type="image/png")
