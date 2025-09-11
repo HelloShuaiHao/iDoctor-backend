@@ -69,7 +69,6 @@ def dicom_to_balanced_png(
     ds = pydicom.dcmread(dicom_path)
     pixel_array = ds.pixel_array.astype(np.float32)
 
-    # 与旧逻辑一致的线性偏移
     pixel_array = pixel_array * 1 - 100
 
     center_val = ds.get("WindowCenter", np.mean(pixel_array))
@@ -90,7 +89,7 @@ def dicom_to_balanced_png(
 
     hu_normalized = ((hu_clipped - min_val) / (max_val - min_val)) * 255.0
     hu_uint8 = hu_normalized.astype(np.uint8)
-    hu_uint8[hu_uint8 == 0] = 255  # 保留你之前的“背景变白”效果
+    hu_uint8[hu_uint8 == 0] = 255  
 
     img = Image.fromarray(hu_uint8)
 
@@ -99,9 +98,13 @@ def dicom_to_balanced_png(
     input_path = os.path.join(out_dir, input_name)
     clean_path = os.path.join(out_dir, clean_name)
 
-    img.save(input_path)
-    # 覆盖复制，保证 clean 始终与最新 input 一致
-    shutil.copyfile(input_path, clean_path)
+    tmp_input = input_path + ".tmp"
+    img.save(tmp_input)
+    os.replace(tmp_input, input_path)
+
+    tmp_clean = clean_path + ".tmp"
+    shutil.copyfile(input_path, tmp_clean)
+    os.replace(tmp_clean, clean_path)
 
     return input_path, clean_path
 
