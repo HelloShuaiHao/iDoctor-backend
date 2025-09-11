@@ -6,7 +6,7 @@ import zipfile
 import zipfile
 import os
 from all_new import main 
-from all_new import l3_detect, continue_after_l3, generate_sagittal, SAGITTAL_FILENAME
+from all_new import l3_detect, continue_after_l3, generate_sagittal, SAGITTAL_CLEAN
 from fastapi.responses import FileResponse
 from fastapi import FastAPI, UploadFile, File, Form, Query
 
@@ -167,23 +167,25 @@ def api_generate_sagittal(patient_name: str, study_date: str, force: int = Query
     os.makedirs(output_folder, exist_ok=True)
     return generate_sagittal(input_folder, output_folder, force=bool(force))
 
-@app.post("/upload_l3_mask/{patient_name}/{study_date}")
-async def upload_l3_mask(patient_name: str, study_date: str, file: UploadFile = File(...)):
-    folder = f"{patient_name}_{study_date}"
-    output_folder = os.path.join(DATA_ROOT, folder, "output")
-    l3_png_dir = os.path.join(output_folder, "L3_png")
-    if not os.path.exists(os.path.join(l3_png_dir, SAGITTAL_FILENAME)):
-        return {"error": "请先生成侧视图 (/generate_sagittal)"}
-    l3_mask_dir = os.path.join(output_folder, "L3_mask")
-    l3_clean_dir = os.path.join(output_folder, "L3_clean_mask")
-    l3_overlay_dir = os.path.join(output_folder, "L3_overlay")
-    os.makedirs(l3_mask_dir, exist_ok=True)
-    os.makedirs(l3_clean_dir, exist_ok=True)
-    os.makedirs(l3_overlay_dir, exist_ok=True)
-    save_path = os.path.join(l3_mask_dir, SAGITTAL_FILENAME)
+@app.post("/upload_l3_mask/{patient}/{date}")
+async def upload_l3_mask(patient: str, date: str, file: UploadFile = File(...)):
+    folder = f"{patient}_{date}"
+    output_folder = os.path.join("data", folder, "output")
+    png_dir = os.path.join(output_folder, "L3_png")
+    if not os.path.exists(os.path.join(png_dir, SAGITTAL_CLEAN)):
+        return {"error": "请先调用 /generate_sagittal"}
+
+    mask_dir = os.path.join(output_folder, "L3_mask")
+    clean_dir = os.path.join(output_folder, "L3_clean_mask")
+    overlay_dir = os.path.join(output_folder, "L3_overlay")
+    for d in [mask_dir, clean_dir, overlay_dir]:
+        os.makedirs(d, exist_ok=True)
+
+    save_path = os.path.join(mask_dir, SAGITTAL_CLEAN)
     with open(save_path, "wb") as f:
         f.write(await file.read())
+
     from sagit_save import clean_mask_folder, overlay_and_save
-    clean_mask_folder(l3_mask_dir, l3_clean_dir)
-    overlay_and_save(l3_png_dir, l3_clean_dir, l3_overlay_dir)
-    return {"status": "ok", "message": "手动 L3 mask 已上传并覆盖自动结果", "l3_overlay": f"L3_overlay/{SAGITTAL_FILENAME}"}
+    clean_mask_folder(mask_dir, clean_dir)
+    overlay_and_save(png_dir, clean_dir, overlay_dir)
+    return {"status": "ok", "message": "手动 L3 mask 已覆盖", "overlay": f"L3_overlay/{SAGITTAL_CLEAN}"}

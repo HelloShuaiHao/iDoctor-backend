@@ -48,44 +48,35 @@ def resize_and_save_sagittal_as_dicom(
     return output_path
 
 
-def dicom_to_balanced_png(dicom_path, out_dir, scale_ratio,
-                          default_center=None, default_width=None):
+def dicom_to_balanced_png(dcm_path, out_dir, scale_ratio, base_name="sagittal_midResize"):
+    """
+    生成两张：
+      base_name_0000.png (模型输入)
+      base_name.png      (干净图，前端显示与手动标注)
+    返回 (input_png_path, clean_png_path)
+    """
     os.makedirs(out_dir, exist_ok=True)
+    ds = pydicom.dcmread(dcm_path)
+    arr = ds.pixel_array.astype(np.float32)
 
-    # 读取 DICOM
-    ds = pydicom.dcmread(dicom_path)
-    pixel_array = ds.pixel_array.astype(np.float32)
+    # 简单窗宽窗位处理
+    center = np.mean(arr)
+    width = np.max(arr) - np.min(arr)
+    vmin = center - width / 2
+    vmax = center + width / 2
+    arr = np.clip(arr, vmin, vmax)
+    arr = ((arr - vmin) / (vmax - vmin) * 255).astype(np.uint8)
+    # 反相背景处理
+    arr[arr == 0] = 255
 
-    pixel_array = pixel_array * 1 - 100
-
-    center_val = ds.get("WindowCenter", np.mean(pixel_array))
-    width_val = ds.get("WindowWidth", np.max(pixel_array) - np.min(pixel_array))
-
-    if isinstance(center_val, pydicom.multival.MultiValue):
-        center_val = center_val[0]
-    if isinstance(width_val, pydicom.multival.MultiValue):
-        width_val = width_val[0]
-
-    center = default_center if default_center is not None else float(center_val)
-    width = default_width if default_width is not None else float(width_val)
-
-    # 窗宽窗位裁剪
-    min_val = center - width / 2
-    max_val = center + width / 2
-    hu_clipped = np.clip(pixel_array, min_val, max_val)
-
-    # 归一化到 0-255
-    hu_normalized = ((hu_clipped - min_val) / (max_val - min_val)) * 255.0
-    hu_uint8 = hu_normalized.astype(np.uint8)
-    hu_uint8[hu_uint8 == 0] = 255
-    img = Image.fromarray(hu_uint8)
-
-    # 保存文件（命名和 dicom 一致，只改扩展名为 .png）
-    base = os.path.splitext(os.path.basename(dicom_path))[0]
-    out_path = os.path.join(out_dir, f"{base}_0000.png")
-    img.save(out_path)
-
-    return out_path
+    img = Image.fromarray(arr)
+    input_name = f"{base_name}_0000.png"
+    clean_name = f"{base_name}.png"
+    input_path = os.path.join(out_dir, input_name)
+    clean_path = os.path.join(out_dir, clean_name)
+    img.save(input_path)
+    shutil.copy(input_path, clean_path)
+    return input_path, clean_path
 
 def overlay_and_save(img_dir, mask_dir, out_dir):
     os.makedirs(out_dir, exist_ok=True)
