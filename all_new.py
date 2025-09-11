@@ -240,9 +240,6 @@ def continue_after_l3(input_folder, output_folder):
 def generate_sagittal(input_folder, output_folder, force=False):
     L3_png_folder = os.path.join(output_folder, "L3_png")
     os.makedirs(L3_png_folder, exist_ok=True)
-    clean_target = os.path.join(L3_png_folder, SAGITTAL_CLEAN)
-    if (not force) and os.path.exists(clean_target):
-        return {"sagittal_png": f"L3_png/{SAGITTAL_CLEAN}", "regenerated": False}
 
     reader = sitk.ImageSeriesReader()
     dicom_names = reader.GetGDCMSeriesFileNames(input_folder)
