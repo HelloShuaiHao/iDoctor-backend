@@ -1,8 +1,9 @@
+import os
+import shutil
+import numpy as np
 import pydicom
 from pydicom.uid import generate_uid
-import numpy as np
 from PIL import Image
-import os
 import cv2
 
 # 函数：resize and save 中间切片为DICOM
