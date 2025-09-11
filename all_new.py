@@ -137,6 +137,7 @@ def main(input_folder, output_folder):
     )
 
 def l3_detect(input_folder, output_folder):
+    import shutil
     L3_png_folder = os.path.join(output_folder, "L3_png")
     L3_mask_folder = os.path.join(output_folder, "L3_mask")
     L3_cleaned_mask_folder = os.path.join(output_folder, "L3_clean_mask")
@@ -147,10 +148,21 @@ def l3_detect(input_folder, output_folder):
     if not os.path.exists(os.path.join(L3_png_folder, SAGITTAL_CLEAN)):
         generate_sagittal(input_folder, output_folder, force=False)
 
+    # 只用 _0000.png 作为 nnUNet 输入
+    nnunet_input = os.path.join(output_folder, "L3_nnUnet_input")
+    os.makedirs(nnunet_input, exist_ok=True)
+    # 清空临时目录
+    for f in os.listdir(nnunet_input):
+        os.remove(os.path.join(nnunet_input, f))
+    # 只复制 _0000.png
+    src = os.path.join(L3_png_folder, SAGITTAL_INPUT)
+    dst = os.path.join(nnunet_input, SAGITTAL_INPUT)
+    shutil.copyfile(src, dst)
+
     # 自动分割
     L3_model_dir = "nnUNet_results/Dataset003_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
     L3_checkpoint = "checkpoint_final.pth"
-    run_nnunet_predict_and_overlay(L3_png_folder, L3_mask_folder, L3_model_dir, L3_checkpoint)
+    run_nnunet_predict_and_overlay(nnunet_input, L3_mask_folder, L3_model_dir, L3_checkpoint)
 
     # 标准化：如果输出是 *_0000.png → 改成 sagittal_midResize.png
     for f in os.listdir(L3_mask_folder):
