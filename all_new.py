@@ -131,6 +131,111 @@ def main(input_folder, output_folder):
         overlay_alpha=0.5
     )
 
+def l3_detect(input_folder, output_folder):
+    # 只做侧视图生成和L3分割
+    L3_png_folder = os.path.join(output_folder, "L3_png")
+    L3_mask_folder = os.path.join(output_folder, "L3_mask")
+    L3_cleaned_mask_folder = os.path.join(output_folder, "L3_clean_mask")
+    L3_overlay_folder = os.path.join(output_folder, "L3_overlay")
+    os.makedirs(L3_png_folder, exist_ok=True)
+    os.makedirs(L3_mask_folder, exist_ok=True)
+    os.makedirs(L3_cleaned_mask_folder, exist_ok=True)
+    os.makedirs(L3_overlay_folder, exist_ok=True)
+
+    # 读取 DICOM
+    reader = sitk.ImageSeriesReader()
+    dicom_names = reader.GetGDCMSeriesFileNames(input_folder)
+    reader.SetFileNames(dicom_names)
+    image = reader.Execute()
+    volume = sitk.GetArrayFromImage(image)
+    spacing = image.GetSpacing()
+    spacing_z = spacing[2]
+    spacing_y = spacing[1]
+    scale_ratio = spacing_z / spacing_y
+    x_mid = volume.shape[2] // 2
+    sagittal_slice = volume[:, :, x_mid]
+
+    dcm_path = resize_and_save_sagittal_as_dicom(sagittal_slice, spacing, dicom_names[len(dicom_names)//2])
+    dicom_to_balanced_png(dcm_path, L3_png_folder, scale_ratio)
+
+    # L3自动分割
+    L3_model_dir = "nnUNet_results/Dataset003_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
+    L3_checkpoint = "checkpoint_final.pth"
+    run_nnunet_predict_and_overlay(L3_png_folder, L3_mask_folder, L3_model_dir, L3_checkpoint)
+    clean_mask_folder(L3_mask_folder, L3_cleaned_mask_folder)
+    overlay_and_save(L3_png_folder, L3_cleaned_mask_folder, L3_overlay_folder)
+
+    # 返回关键文件名
+    return {
+        "sagittal_png": os.path.join("L3_png", "sagittal_midResize.png"),
+        "l3_mask": os.path.join("L3_clean_mask", "sagittal_midResize.png"),
+        "l3_overlay": os.path.join("L3_overlay", "sagittal_midResize.png"),
+    }
+
+def continue_after_l3(input_folder, output_folder):
+    # 只做横断面提取和后续分割
+    L3_cleaned_mask_folder = os.path.join(output_folder, "L3_clean_mask")
+    slice_folder = os.path.join(output_folder, "Axisal")
+    full_mask_folder = os.path.join(output_folder, "full_mask")
+    clean_full_mask_folder = os.path.join(output_folder, "clean")
+    full_overlay_folder = os.path.join(output_folder, "full_overlay")
+    major_mask_folder = os.path.join(output_folder, "major_mask")
+    major_overlay_folder = os.path.join(output_folder, "major_overlay")
+
+    # 读取 DICOM
+    reader = sitk.ImageSeriesReader()
+    dicom_names = reader.GetGDCMSeriesFileNames(input_folder)
+    reader.SetFileNames(dicom_names)
+    image = reader.Execute()
+    volume = sitk.GetArrayFromImage(image)
+    orig_height, orig_width = volume.shape[1], volume.shape[2]
+    x_mid = volume.shape[2] // 2
+
+    # 恢复 mask
+    image_path = os.path.join(L3_cleaned_mask_folder, "sagittal_midResize.png")
+    mask = load_mask(image_path)
+    restored_mask = cv2.resize(mask, (orig_width, orig_height), interpolation=cv2.INTER_NEAREST)
+
+    # 横断面提取
+    axial_slices_numbers = extract_axial_slices_from_sagittal_mask(volume, restored_mask, x_mid, save_images=False)
+    selectedNumbers = reversedNumber(volume.shape[0], axial_slices_numbers)
+    convert_selected_slices(
+        dicom_folder=input_folder,
+        output_folder=slice_folder,
+        selected_slices=selectedNumbers
+    )
+
+    # 肌肉分割
+    full_model_dir="nnUNet_results/Dataset001_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
+    full_checkpoint="checkpoint_final.pth"
+    major_model_dir="nnUNet_results/Dataset002_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
+    major_checkpoint="checkpoint_final.pth"
+    run_nnunet_predict_and_overlay(slice_folder, major_mask_folder, major_model_dir, major_checkpoint)
+    run_nnunet_predict_and_overlay(slice_folder, full_mask_folder, full_model_dir, full_checkpoint)
+
+    for filename in os.listdir(slice_folder):
+        if filename.endswith("_0000.png"):
+            name_wo_ext = filename[:-9]
+            old_path = os.path.join(slice_folder, filename)
+            new_path = os.path.join(slice_folder, name_wo_ext + ".png")
+            os.rename(old_path, new_path)
+
+    process_all(
+        psoas_mask_dir=major_mask_folder,
+        full_mask_dir=full_mask_folder,
+        slice_dir=slice_folder,
+        dicom_dir=input_folder,
+        overlay_psoas_dir=major_overlay_folder,
+        overlay_combo_dir=full_overlay_folder,
+        clean_full_mask_dir=clean_full_mask_folder,
+        pattern="*.png",
+        area_thresh=1000,
+        area_ratio_thresh=0.05,
+        morph_ksize=3,
+        morph_iters=1,
+        overlay_alpha=0.5
+    )
+    return {"status": "ok", "message": "后续流程已完成"}
 
 if __name__ == "__main__":
     try:

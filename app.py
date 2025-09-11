@@ -6,7 +6,9 @@ import zipfile
 import zipfile
 import os
 from fastapi.responses import FileResponse
-from all_new import main  # 重构 main 
+from all_new import main 
+from all_new import l3_detect, continue_after_l3
+
 
 app = FastAPI()
 # 允许的前端来源
@@ -20,7 +22,7 @@ origins = [
 ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,      # 或用 ["*"] 临时放开所有
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -122,3 +124,21 @@ def get_image(patient_name: str, study_date: str, filename: str):
     if not os.path.exists(img_path):
         return {"error": "图片不存在"}
     return FileResponse(img_path, media_type="image/png")    
+
+
+@app.post("/l3_detect/{patient_name}/{study_date}")
+def api_l3_detect(patient_name: str, study_date: str):
+    folder = f"{patient_name}_{study_date}"
+    input_folder = os.path.join(DATA_ROOT, folder, "input")
+    output_folder = os.path.join(DATA_ROOT, folder, "output")
+    os.makedirs(output_folder, exist_ok=True)
+    result = l3_detect(input_folder, output_folder)
+    return result
+
+@app.post("/continue_after_l3/{patient_name}/{study_date}")
+def api_continue_after_l3(patient_name: str, study_date: str):
+    folder = f"{patient_name}_{study_date}"
+    input_folder = os.path.join(DATA_ROOT, folder, "input")
+    output_folder = os.path.join(DATA_ROOT, folder, "output")
+    result = continue_after_l3(input_folder, output_folder)
+    return result
