@@ -9,6 +9,8 @@ from extract_slice import load_mask, extract_axial_slices_from_sagittal_mask, re
 from seg import run_nnunet_predict_and_overlay
 from compute import process_all
 
+SAGITTAL_FILENAME = "sagittal_midResize.png"
+
 def main(input_folder, output_folder):
     # 输出目录
     # dicom_folder = "1504425"
@@ -132,7 +134,10 @@ def main(input_folder, output_folder):
     )
 
 def l3_detect(input_folder, output_folder):
-    # 只做侧视图生成和L3分割
+    """
+    自动 L3 分割：假设侧视图已存在；若不存在则自动生成。
+    返回：原始侧视图、清洗后mask、overlay
+    """
     L3_png_folder = os.path.join(output_folder, "L3_png")
     L3_mask_folder = os.path.join(output_folder, "L3_mask")
     L3_cleaned_mask_folder = os.path.join(output_folder, "L3_clean_mask")
@@ -142,34 +147,29 @@ def l3_detect(input_folder, output_folder):
     os.makedirs(L3_cleaned_mask_folder, exist_ok=True)
     os.makedirs(L3_overlay_folder, exist_ok=True)
 
-    # 读取 DICOM
+    # 如果还没有纯侧视图，先生成
+    sagittal_png_path = os.path.join(L3_png_folder, SAGITTAL_FILENAME)
+    if not os.path.exists(sagittal_png_path):
+        generate_sagittal(input_folder, output_folder, force=False)
+
+    # 读取 DICOM（用于获取 spacing）
     reader = sitk.ImageSeriesReader()
     dicom_names = reader.GetGDCMSeriesFileNames(input_folder)
     reader.SetFileNames(dicom_names)
     image = reader.Execute()
-    volume = sitk.GetArrayFromImage(image)
-    spacing = image.GetSpacing()
-    spacing_z = spacing[2]
-    spacing_y = spacing[1]
-    scale_ratio = spacing_z / spacing_y
-    x_mid = volume.shape[2] // 2
-    sagittal_slice = volume[:, :, x_mid]
 
-    dcm_path = resize_and_save_sagittal_as_dicom(sagittal_slice, spacing, dicom_names[len(dicom_names)//2])
-    dicom_to_balanced_png(dcm_path, L3_png_folder, scale_ratio)
-
-    # L3自动分割
+    # 自动分割
     L3_model_dir = "nnUNet_results/Dataset003_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
     L3_checkpoint = "checkpoint_final.pth"
     run_nnunet_predict_and_overlay(L3_png_folder, L3_mask_folder, L3_model_dir, L3_checkpoint)
     clean_mask_folder(L3_mask_folder, L3_cleaned_mask_folder)
     overlay_and_save(L3_png_folder, L3_cleaned_mask_folder, L3_overlay_folder)
 
-    # 返回关键文件名
     return {
-        "sagittal_png": os.path.join("L3_png", "sagittal_midResize.png"),
-        "l3_mask": os.path.join("L3_clean_mask", "sagittal_midResize.png"),
-        "l3_overlay": os.path.join("L3_overlay", "sagittal_midResize.png"),
+        "sagittal_png": os.path.join("L3_png", SAGITTAL_FILENAME),
+        "l3_mask": os.path.join("L3_clean_mask", SAGITTAL_FILENAME),
+        "l3_overlay": os.path.join("L3_overlay", SAGITTAL_FILENAME),
+        "auto": True
     }
 
 def continue_after_l3(input_folder, output_folder):
@@ -236,6 +236,37 @@ def continue_after_l3(input_folder, output_folder):
         overlay_alpha=0.5
     )
     return {"status": "ok", "message": "后续流程已完成"}
+
+def generate_sagittal(input_folder, output_folder, force=False):
+    """
+    只生成中间矢状面 PNG（干净图，无分割），供前端手动标注。
+    force=True 时即使已存在也重建。
+    """
+    L3_png_folder = os.path.join(output_folder, "L3_png")
+    os.makedirs(L3_png_folder, exist_ok=True)
+    target_png = os.path.join(L3_png_folder, SAGITTAL_FILENAME)
+    if (not force) and os.path.exists(target_png):
+        return {"sagittal_png": os.path.join("L3_png", SAGITTAL_FILENAME), "regenerated": False}
+
+    reader = sitk.ImageSeriesReader()
+    dicom_names = reader.GetGDCMSeriesFileNames(input_folder)
+    if len(dicom_names) == 0:
+        raise RuntimeError("未找到 DICOM")
+    reader.SetFileNames(dicom_names)
+    image = reader.Execute()
+    volume = sitk.GetArrayFromImage(image)
+    spacing = image.GetSpacing()
+    spacing_z = spacing[2]
+    spacing_y = spacing[1]
+    scale_ratio = spacing_z / spacing_y
+    x_mid = volume.shape[2] // 2
+    sagittal_slice = volume[:, :, x_mid]
+
+    dcm_path = resize_and_save_sagittal_as_dicom(
+        sagittal_slice, spacing, dicom_names[len(dicom_names)//2]
+    )
+    dicom_to_balanced_png(dcm_path, L3_png_folder, scale_ratio)
+    return {"sagittal_png": os.path.join("L3_png", SAGITTAL_FILENAME), "regenerated": True}
 
 if __name__ == "__main__":
     try:

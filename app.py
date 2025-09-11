@@ -5,10 +5,11 @@ import shutil, os
 import zipfile
 import zipfile
 import os
-from fastapi.responses import FileResponse
 from all_new import main 
-from all_new import l3_detect, continue_after_l3
+from all_new import l3_detect, continue_after_l3, generate_sagittal, SAGITTAL_FILENAME
 from fastapi.responses import FileResponse
+from fastapi import FastAPI, UploadFile, File, Form, Query
+
 
 
 app = FastAPI()
@@ -154,3 +155,35 @@ def get_output_image(patient_name: str, study_date: str, folder: str, filename: 
     if not os.path.exists(file_path):
         return {"error": "图片不存在"}
     return FileResponse(file_path, media_type="image/png")
+
+
+@app.post("/generate_sagittal/{patient_name}/{study_date}")
+def api_generate_sagittal(patient_name: str, study_date: str, force: int = Query(0)):
+    folder = f"{patient_name}_{study_date}"
+    input_folder = os.path.join(DATA_ROOT, folder, "input")
+    output_folder = os.path.join(DATA_ROOT, folder, "output")
+    if not os.path.isdir(input_folder):
+        return {"error": "请先上传 DICOM"}
+    os.makedirs(output_folder, exist_ok=True)
+    return generate_sagittal(input_folder, output_folder, force=bool(force))
+
+@app.post("/upload_l3_mask/{patient_name}/{study_date}")
+async def upload_l3_mask(patient_name: str, study_date: str, file: UploadFile = File(...)):
+    folder = f"{patient_name}_{study_date}"
+    output_folder = os.path.join(DATA_ROOT, folder, "output")
+    l3_png_dir = os.path.join(output_folder, "L3_png")
+    if not os.path.exists(os.path.join(l3_png_dir, SAGITTAL_FILENAME)):
+        return {"error": "请先生成侧视图 (/generate_sagittal)"}
+    l3_mask_dir = os.path.join(output_folder, "L3_mask")
+    l3_clean_dir = os.path.join(output_folder, "L3_clean_mask")
+    l3_overlay_dir = os.path.join(output_folder, "L3_overlay")
+    os.makedirs(l3_mask_dir, exist_ok=True)
+    os.makedirs(l3_clean_dir, exist_ok=True)
+    os.makedirs(l3_overlay_dir, exist_ok=True)
+    save_path = os.path.join(l3_mask_dir, SAGITTAL_FILENAME)
+    with open(save_path, "wb") as f:
+        f.write(await file.read())
+    from sagit_save import clean_mask_folder, overlay_and_save
+    clean_mask_folder(l3_mask_dir, l3_clean_dir)
+    overlay_and_save(l3_png_dir, l3_clean_dir, l3_overlay_dir)
+    return {"status": "ok", "message": "手动 L3 mask 已上传并覆盖自动结果", "l3_overlay": f"L3_overlay/{SAGITTAL_FILENAME}"}
