@@ -80,22 +80,10 @@ def main(input_folder, output_folder):
     # png_path = dicom_to_balanced_png(dcm_path, f"output7_{dicom_folder}.png", scale_ratio)
     png_path = dicom_to_balanced_png(dcm_path, L3_png_folder, scale_ratio)
 
-    # 保证只有一个 *_0000.png
-    for f in os.listdir(L3_png_folder):
-        if f != SAGITTAL_INPUT and f.endswith(".png"):
-            os.remove(os.path.join(L3_png_folder, f))
-    if not os.path.exists(os.path.join(L3_png_folder, SAGITTAL_INPUT)):
-        # 如果 dicom_to_balanced_png 生成的不是 SAGITTAL_INPUT 名字，重命名
-        for f in os.listdir(L3_png_folder):
-            if f.endswith(".png"):
-                os.rename(os.path.join(L3_png_folder, f),
-                        os.path.join(L3_png_folder, SAGITTAL_INPUT))
-                break
-
-
     # 2. 推理L3脊柱
     # return mask和overlay的地址
     # mask_path, overlay_path = process_image(image_path, L3_weights_path, L3_output_folder)
+    clean_nnunet_input_folder(slice_folder)
     run_nnunet_predict_and_overlay(L3_png_folder, L3_mask_folder, L3_model_dir, L3_checkpoint)
     
     clean_mask_folder(L3_mask_folder, L3_cleaned_mask_folder)
@@ -282,6 +270,11 @@ def generate_sagittal(input_folder, output_folder, force=False):
     )
     dicom_to_balanced_png(dcm_path, L3_png_folder, scale_ratio=1.0, base_name=SAGITTAL_BASE)
     return {"sagittal_png": f"L3_png/{SAGITTAL_CLEAN}", "regenerated": True}
+
+def clean_nnunet_input_folder(folder):
+    for f in os.listdir(folder):
+        if f.endswith(".png") and not f.endswith("_0000.png"):
+            os.remove(os.path.join(folder, f))
 
 if __name__ == "__main__":
     try:
