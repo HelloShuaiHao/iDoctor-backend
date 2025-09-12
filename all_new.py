@@ -214,7 +214,7 @@ def continue_after_l3(input_folder, output_folder):
 
     # 横断面提取
     axial_slices_numbers = extract_axial_slices_from_sagittal_mask(volume, mask, x_mid, save_images=False)
-    
+
     selectedNumbers = reversedNumber(volume.shape[0], axial_slices_numbers)
     convert_selected_slices(
         dicom_folder=input_folder,
@@ -227,6 +227,10 @@ def continue_after_l3(input_folder, output_folder):
     full_checkpoint="checkpoint_final.pth"
     major_model_dir="nnUNet_results/Dataset002_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
     major_checkpoint="checkpoint_final.pth"
+
+    # 只保留*_0000.png 作为 nnUNet 输入
+    clean_nnunet_input_folder(slice_folder)
+
     run_nnunet_predict_and_overlay(slice_folder, major_mask_folder, major_model_dir, major_checkpoint)
     run_nnunet_predict_and_overlay(slice_folder, full_mask_folder, full_model_dir, full_checkpoint)
 
