@@ -92,7 +92,6 @@ def list_patients():
         "patients": patient_date_list
     }
 
-
 # 根据病人名字和日期，返回 full_overlay 文件夹下的关键数据（两个 csv 文件和所有以 middle 结尾的图片）
 @app.get("/get_key_results/{patient_name}/{study_date}")
 def get_key_results(patient_name: str, study_date: str):
@@ -145,7 +144,6 @@ def api_continue_after_l3(patient_name: str, study_date: str):
     result = continue_after_l3(input_folder, output_folder)
     return result
 
-
 @app.get("/get_output_image/{patient_name}/{study_date}/{folder}/{filename}")
 def get_output_image(patient_name: str, study_date: str, folder: str, filename: str):
     # folder 例如 L3_overlay、L3_clean_mask、L3_png 等
@@ -155,7 +153,6 @@ def get_output_image(patient_name: str, study_date: str, folder: str, filename: 
     if not os.path.exists(file_path):
         return {"error": "图片不存在"}
     return FileResponse(file_path, media_type="image/png")
-
 
 @app.post("/generate_sagittal/{patient_name}/{study_date}")
 def api_generate_sagittal(patient_name: str, study_date: str, force: int = Query(0)):

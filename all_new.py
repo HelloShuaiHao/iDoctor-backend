@@ -80,6 +80,19 @@ def main(input_folder, output_folder):
     # png_path = dicom_to_balanced_png(dcm_path, f"output7_{dicom_folder}.png", scale_ratio)
     png_path = dicom_to_balanced_png(dcm_path, L3_png_folder, scale_ratio)
 
+    # 保证只有一个 *_0000.png
+    for f in os.listdir(L3_png_folder):
+        if f != SAGITTAL_INPUT and f.endswith(".png"):
+            os.remove(os.path.join(L3_png_folder, f))
+    if not os.path.exists(os.path.join(L3_png_folder, SAGITTAL_INPUT)):
+        # 如果 dicom_to_balanced_png 生成的不是 SAGITTAL_INPUT 名字，重命名
+        for f in os.listdir(L3_png_folder):
+            if f.endswith(".png"):
+                os.rename(os.path.join(L3_png_folder, f),
+                        os.path.join(L3_png_folder, SAGITTAL_INPUT))
+                break
+
+
     # 2. 推理L3脊柱
     # return mask和overlay的地址
     # mask_path, overlay_path = process_image(image_path, L3_weights_path, L3_output_folder)
