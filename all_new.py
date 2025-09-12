@@ -209,10 +209,12 @@ def continue_after_l3(input_folder, output_folder):
     # 恢复 mask
     image_path = os.path.join(L3_cleaned_mask_folder, "sagittal_midResize.png")
     mask = load_mask(image_path)
-    restored_mask = cv2.resize(mask, (orig_width, orig_height), interpolation=cv2.INTER_NEAREST)
+    mask = cv2.resize(mask, (volume.shape[1], volume.shape[0]), interpolation=cv2.INTER_NEAREST)
+    print("DEBUG: restored mask shape:", mask.shape)
 
     # 横断面提取
-    axial_slices_numbers = extract_axial_slices_from_sagittal_mask(volume, restored_mask, x_mid, save_images=False)
+    axial_slices_numbers = extract_axial_slices_from_sagittal_mask(volume, mask, x_mid, save_images=False)
+    
     selectedNumbers = reversedNumber(volume.shape[0], axial_slices_numbers)
     convert_selected_slices(
         dicom_folder=input_folder,
