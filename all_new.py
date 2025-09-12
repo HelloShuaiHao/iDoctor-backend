@@ -84,6 +84,8 @@ def main(input_folder, output_folder):
     # return mask和overlay的地址
     # mask_path, overlay_path = process_image(image_path, L3_weights_path, L3_output_folder)
     clean_nnunet_input_folder(slice_folder)
+    clean_nnunet_input_folder(L3_png_folder)
+
     run_nnunet_predict_and_overlay(L3_png_folder, L3_mask_folder, L3_model_dir, L3_checkpoint)
     
     clean_mask_folder(L3_mask_folder, L3_cleaned_mask_folder)
