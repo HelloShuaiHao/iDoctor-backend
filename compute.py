@@ -18,6 +18,7 @@ def load_dicom_hu(dicom_path):
 
 def compute_mask_hu_statistics(dicom_path, mask_bool):
     hu_image, pixel_size_mm = load_dicom_hu(dicom_path)
+    # 可以匹配看mask对应的HU值
     if mask_bool.dtype != bool:
         mask_bool = mask_bool.astype(bool)
     if not np.any(mask_bool):
@@ -35,6 +36,41 @@ def compute_mask_hu_statistics(dicom_path, mask_bool):
         "hu_sum": float(np.round(np.sum(hu_values), 2)),
         "area_mm2": float(np.round(area_mm2, 2))
     }
+
+# # 过滤HU值
+# def compute_mask_hu_statistics(dicom_path, mask_bool):
+#     hu_image, pixel_size_mm = load_dicom_hu(dicom_path)
+
+#     if mask_bool.dtype != bool:
+#         mask_bool = mask_bool.astype(bool)
+#     if not np.any(mask_bool):
+#         return {
+#             "pixels": 0, "hu_mean": np.nan, "hu_min": np.nan, "hu_max": np.nan,
+#             "hu_sum": np.nan, "area_mm2": 0.0
+#         }
+
+#     hu_values = hu_image[mask_bool]
+
+#     # [0, 100]
+#     hu_values = hu_values[(hu_values >= 0) & (hu_values <= 100)]
+
+#     if len(hu_values) == 0:
+#         return {
+#             "pixels": 0, "hu_mean": np.nan, "hu_min": np.nan, "hu_max": np.nan,
+#             "hu_sum": np.nan, "area_mm2": 0.0
+#         }
+
+#     area_mm2 = float(len(hu_values)) * (pixel_size_mm ** 2)
+
+#     return {
+#         "pixels": int(len(hu_values)),
+#         "hu_mean": float(np.round(np.mean(hu_values), 2)),
+#         "hu_min": float(np.round(np.min(hu_values), 2)),
+#         "hu_max": float(np.round(np.max(hu_values), 2)),
+#         "hu_sum": float(np.round(np.sum(hu_values), 2)),
+#         "area_mm2": float(np.round(area_mm2, 2))
+#     }
+
 
 def clean_full_mask(mask_gray, area_thresh=1000, area_ratio_thresh=0.05, morph_ksize=3, morph_iters=1):
     bin_ = (mask_gray > 0).astype(np.uint8)

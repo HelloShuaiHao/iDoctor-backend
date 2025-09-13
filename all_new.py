@@ -194,6 +194,12 @@ def continue_after_l3(input_folder, output_folder):
     full_mask_folder = os.path.join(output_folder, "full_mask")
     clean_full_mask_folder = os.path.join(output_folder, "clean")
     full_overlay_folder = os.path.join(output_folder, "full_overlay")
+    # 新增：如果 full_overlay 文件夹存在则清空
+    if os.path.isdir(full_overlay_folder):
+        for f in os.listdir(full_overlay_folder):
+            file_path = os.path.join(full_overlay_folder, f)
+            if os.path.isfile(file_path):
+                os.remove(file_path)    
     major_mask_folder = os.path.join(output_folder, "major_mask")
     major_overlay_folder = os.path.join(output_folder, "major_overlay")
 
