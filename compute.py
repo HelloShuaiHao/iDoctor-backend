@@ -8,12 +8,26 @@ from tqdm import tqdm
 import pydicom
 from pydicom.pixel_data_handlers.util import apply_modality_lut
 
+import SimpleITK as sitk
+
 def load_dicom_hu(dicom_path):
-    ds = pydicom.dcmread(dicom_path)
-    image = ds.pixel_array
-    spacing = ds.PixelSpacing  # [row_spacing_mm, col_spacing_mm]
-    pixel_size_mm = float(spacing[0])  # 通常行列一致
-    hu_image = apply_modality_lut(image, ds)
+    if dicom_path.lower().endswith(".dcm.pk"):
+        # 用 SimpleITK 读取
+        itk_img = sitk.ReadImage(dicom_path)
+        image = sitk.GetArrayFromImage(itk_img)[0]  # 只取第0层
+        # 尝试获取像素间距
+        spacing = itk_img.GetSpacing()
+        if len(spacing) >= 2:
+            pixel_size_mm = float(spacing[1])  # ITK: spacing=(x, y, z)
+        else:
+            pixel_size_mm = 1.0  # fallback
+        hu_image = image  # ITK 读出来就是 HU
+    else:
+        ds = pydicom.dcmread(dicom_path)
+        image = ds.pixel_array
+        spacing = ds.PixelSpacing
+        pixel_size_mm = float(spacing[0])
+        hu_image = apply_modality_lut(image, ds)
     return hu_image, pixel_size_mm
 
 def compute_mask_hu_statistics(dicom_path, mask_bool):
