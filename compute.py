@@ -149,8 +149,11 @@ def process_all(
         return
 
     # dicom_files = sorted(os.listdir(dicom_dir))
-    dicom_files = sorted([f for f in os.listdir(dicom_dir) if f.lower().endswith((".dcm", ".dcm.pk"))])
-
+    dicom_files = sorted([
+        f for f in os.listdir(dicom_dir)
+        if not f.startswith("._") and f.lower().endswith((".dcm", ".dcm.pk"))
+    ])
+    
     results = []
     valid_items = []
 

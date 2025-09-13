@@ -102,6 +102,9 @@ def convert_selected_slices(dicom_folder, output_folder, selected_slices):
     os.makedirs(output_folder, exist_ok=True)
 
     for filename in sorted(os.listdir(dicom_folder)):
+        if filename.startswith("._"):
+            continue
+
         if not filename.lower().endswith((".dcm", ".dcm.pk")):
             continue
 
