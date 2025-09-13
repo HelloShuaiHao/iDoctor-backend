@@ -280,6 +280,8 @@ def generate_sagittal(input_folder, output_folder, force=False):
     return {"sagittal_png": f"L3_png/{SAGITTAL_CLEAN}", "regenerated": True}
 
 def clean_nnunet_input_folder(folder):
+    if not os.path.isdir(folder):
+        return
     for f in os.listdir(folder):
         if f.endswith(".png") and not f.endswith("_0000.png"):
             os.remove(os.path.join(folder, f))
