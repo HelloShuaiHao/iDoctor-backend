@@ -134,7 +134,8 @@ def process_all(
         print("[警告] 未在 slice_dir 中找到任何图片：", slice_dir)
         return
 
-    dicom_files = sorted(os.listdir(dicom_dir))
+    # dicom_files = sorted(os.listdir(dicom_dir))
+    dicom_files = sorted([f for f in os.listdir(dicom_dir) if f.lower().endswith((".dcm", ".dcm.pk"))])
 
     results = []
     valid_items = []

@@ -9,7 +9,7 @@ import os
 def load_dicom_series(folder_path):
     dicom_files = [
         pydicom.dcmread(os.path.join(folder_path, f))
-        for f in os.listdir(folder_path) if f.endswith(".dcm")
+        for f in os.listdir(folder_path) if f.lower().endswith((".dcm", ".dcm.pk"))
     ]
     dicom_files.sort(key=lambda ds: float(ds.ImagePositionPatient[2]))  # sort by Z
 
@@ -102,7 +102,7 @@ def convert_selected_slices(dicom_folder, output_folder, selected_slices):
     os.makedirs(output_folder, exist_ok=True)
 
     for filename in sorted(os.listdir(dicom_folder)):
-        if not filename.lower().endswith(".dcm"):
+        if not filename.lower().endswith((".dcm", ".dcm.pk")):
             continue
 
         dicom_path = os.path.join(dicom_folder, filename)
