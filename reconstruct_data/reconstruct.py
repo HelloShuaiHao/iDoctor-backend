@@ -84,4 +84,5 @@ def main():
         return
     process_root(args.root, dry=args.dry_run, force=args.force)
 
-if __name__ ==
+if __name__ == "__main__":
+    main()
