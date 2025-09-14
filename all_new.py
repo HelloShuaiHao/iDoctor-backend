@@ -104,6 +104,14 @@ def main(input_folder, output_folder):
     # 3. 找对应的横切图
     # Extract corresponding axial slices
     axial_slices_numbers = extract_axial_slices_from_sagittal_mask(volume, restored_mask, x_mid, save_images=False)
+    print(f"[DEBUG] axial z indices (main) count={len(axial_slices_numbers)} "
+          f"first/last={axial_slices_numbers[:2]} ... {axial_slices_numbers[-2:]}")
+    convert_selected_slices_by_z_index(
+        dicom_folder=dicom_folder,
+        output_folder=slice_folder,
+        selected_z_indices=axial_slices_numbers
+    )
+    
     selectedNumbers = reversedNumber(volume.shape[0], axial_slices_numbers)
 
     # convert_selected_slices(dicom_folder, slice_folder, seleactedNumbers)
@@ -231,7 +239,7 @@ def continue_after_l3(input_folder, output_folder):
         output_folder=slice_folder,
         selected_z_indices=axial_slices_numbers
     )
-    
+
     selectedNumbers = reversedNumber(volume.shape[0], axial_slices_numbers)
     convert_selected_slices(
         dicom_folder=input_folder,
