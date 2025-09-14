@@ -120,3 +120,53 @@ def convert_selected_slices(dicom_folder, output_folder, selected_slices):
 
         except Exception as e:
             print(f"Error processing {filename}: {e}")
+
+
+def convert_selected_slices_by_z_index(dicom_folder, output_folder, selected_z_indices,
+                                       default_center=None, default_width=None):
+    """
+    根据构建 volume 时的物理顺序 (ImagePositionPatient[2] -> 排序) 用 z 索引导出对应切片。
+    selected_z_indices: 直接来自 extract_axial_slices_from_sagittal_mask 返回的 z list
+    """
+    os.makedirs(output_folder, exist_ok=True)
+    # 读取并收集
+    ds_list = []
+    for f in os.listdir(dicom_folder):
+        if f.startswith("._"):
+            continue
+        if not f.lower().endswith((".dcm", ".dcm.pk")):
+            continue
+        path = os.path.join(dicom_folder, f)
+        try:
+            ds = pydicom.dcmread(path)
+            ds_list.append(ds)
+        except Exception as e:
+            print(f"[跳过] 读取失败 {f}: {e}")
+    if not ds_list:
+        print("[警告] 没有可用 DICOM")
+        return
+
+    # 排序（与 SimpleITK 读取顺序对齐）
+    def z_key(ds):
+        try:
+            return float(ds.ImagePositionPatient[2])
+        except Exception:
+            return float(ds.get("InstanceNumber", 0))
+    ds_list.sort(key=z_key)
+
+    sel_set = set(selected_z_indices)
+    print(f"[INFO] 选中 z 索引数量: {len(sel_set)}  原始列表长度: {len(selected_z_indices)}")
+
+    for z_idx, ds in enumerate(ds_list):
+        if z_idx in sel_set:
+            inst = ds.get("InstanceNumber", z_idx)
+            try:
+                inst_int = int(inst)
+            except:
+                inst_int = z_idx
+            out_name = f"slice_{inst_int:03d}_0000.png"
+            out_path = os.path.join(output_folder, out_name)
+            dicom_to_png(ds, out_path, default_center=default_center, default_width=default_width)
+            # 调试输出
+            ipp = getattr(ds, "ImagePositionPatient", ["?", "?", "?"])
+            print(f"[导出] z_idx={z_idx} -> {out_name}  InstanceNumber={inst}  Z={ipp[2] if len(ipp)>=3 else '?'}")            

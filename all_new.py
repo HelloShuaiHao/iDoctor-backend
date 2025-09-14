@@ -6,6 +6,10 @@ import torch
 import multiprocessing as mp
 from sagit_save import resize_and_save_sagittal_as_dicom, dicom_to_balanced_png, overlay_and_save, clean_mask_folder
 from extract_slice import load_mask, extract_axial_slices_from_sagittal_mask, reversedNumber, convert_selected_slices
+
+from extract_slice import load_mask, extract_axial_slices_from_sagittal_mask,convert_selected_slices
+from extract_slice import convert_selected_slices_by_z_index
+
 from seg import run_nnunet_predict_and_overlay
 from compute import process_all
 
@@ -220,7 +224,14 @@ def continue_after_l3(input_folder, output_folder):
 
     # 横断面提取
     axial_slices_numbers = extract_axial_slices_from_sagittal_mask(volume, mask, x_mid, save_images=False)
-
+    print(f"[DEBUG] axial z indices (continue) count={len(axial_slices_numbers)} "
+          f"first/last={axial_slices_numbers[:2]} ... {axial_slices_numbers[-2:]}")
+    convert_selected_slices_by_z_index(
+        dicom_folder=input_folder,
+        output_folder=slice_folder,
+        selected_z_indices=axial_slices_numbers
+    )
+    
     selectedNumbers = reversedNumber(volume.shape[0], axial_slices_numbers)
     convert_selected_slices(
         dicom_folder=input_folder,
