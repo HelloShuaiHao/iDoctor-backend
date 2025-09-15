@@ -2,7 +2,7 @@ import os
 import csv
 import shutil
 import argparse
-import re   # 新增
+import re
 
 def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
     os.makedirs(out_root, exist_ok=True)
@@ -11,14 +11,13 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
     cases_processed = 0
     cases_missing_csv = 0
 
-    date_pattern = re.compile(r'_[0-9]{8}$')  # 匹配末尾的 _YYYYMMDD
+    date_pattern = re.compile(r'_[0-9]{8}$')  # 末尾 _YYYYMMDD
 
     for case_dir in sorted(os.listdir(data_root)):
         case_path = os.path.join(data_root, case_dir)
         if not os.path.isdir(case_path):
             continue
 
-        # 去掉末尾日期作为最终编号
         base_id = date_pattern.sub('', case_dir)
 
         csv_path = os.path.join(case_path, "output", "full_overlay", "hu_statistics_middle_only.csv")
@@ -27,6 +26,7 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
             cases_missing_csv += 1
             continue
 
+        # 读取 CSV
         with open(csv_path, "r", encoding="utf-8") as f:
             sample = f.read(4096)
             f.seek(0)
@@ -37,7 +37,6 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
                 print(f"[WARN] 空文件: {csv_path}")
                 continue
             if header is None:
-                # 只保留去日期后的编号列，不再写原目录名
                 header = ["case_id"] + rows[0]
             else:
                 if len(rows[0]) != len(header) - 1:
@@ -47,36 +46,58 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
                     continue
                 summary_rows.append([base_id] + data_row)
 
-        # 输出目录用去日期后的 base_id（可能多个日期合并到同一目录）
         dst_case_dir = os.path.join(out_root, base_id)
         os.makedirs(dst_case_dir, exist_ok=True)
 
-        # 1) 复制 *_middle.png
         full_overlay_dir = os.path.join(case_path, "output", "full_overlay")
+        axisal_dir = os.path.join(case_path, "output", "Axisal")
+        middle_bases = set()
         copied_any = False
+
+        # 复制 overlay 的 middle 图，重命名为 *_middle_overlay.png
         if os.path.isdir(full_overlay_dir):
             for fname in sorted(os.listdir(full_overlay_dir)):
-                if fname.endswith(".png") and fname.endswith("_middle.png"):
+                if fname.endswith("_middle.png"):
+                    base = fname[:-len("_middle.png")]  # slice_XXX
                     src = os.path.join(full_overlay_dir, fname)
-                    dst = os.path.join(dst_case_dir, fname)
+                    dst = os.path.join(dst_case_dir, f"{base}_middle_overlay.png")
                     shutil.copy2(src, dst)
+                    middle_bases.add(base)
                     copied_any = True
-        if not copied_any:
-            for fname in sorted(os.listdir(full_overlay_dir)) if os.path.isdir(full_overlay_dir) else []:
+
+        if not copied_any and os.path.isdir(full_overlay_dir):
+            # 宽松匹配
+            for fname in sorted(os.listdir(full_overlay_dir)):
                 if fname.endswith(".png") and "_middle" in fname:
+                    # 截取 _middle 前部分
+                    base = fname.split("_middle")[0]
                     src = os.path.join(full_overlay_dir, fname)
-                    dst = os.path.join(dst_case_dir, fname)
+                    dst = os.path.join(dst_case_dir, f"{base}_middle_overlay.png")
                     shutil.copy2(src, dst)
+                    middle_bases.add(base)
                     copied_any = True
+
         if not copied_any:
             print(f"[INFO] 未找到 middle 图: {full_overlay_dir}")
 
-        # 2) 复制 sagittal_midResize.png
+        # 复制对应原始 Axisal 切片，命名 *_middle_raw.png
+        if middle_bases:
+            for base in sorted(middle_bases):
+                orig_name = f"{base}.png"
+                orig_path = os.path.join(axisal_dir, orig_name)
+                if os.path.isfile(orig_path):
+                    raw_dst = os.path.join(dst_case_dir, f"{base}_middle_raw.png")
+                    if not os.path.isfile(raw_dst):
+                        shutil.copy2(orig_path, raw_dst)
+                else:
+                    print(f"[WARN] 原始切片缺失: {orig_path}")
+
+        # 复制 sagittal
         l3_overlay_dir = os.path.join(case_path, "output", "L3_overlay")
         sagittal_png = os.path.join(l3_overlay_dir, "sagittal_midResize.png")
         if os.path.isfile(sagittal_png):
-            # 若已存在且来自不同日期，可选择覆盖；需要区分可改名: f"sagittal_midResize_{case_dir}.png"
-            shutil.copy2(sagittal_png, os.path.join(dst_case_dir, "sagittal_midResize.png"))
+            sagittal_dst = os.path.join(dst_case_dir, "sagittal_midResize.png")
+            shutil.copy2(sagittal_png, sagittal_dst)
         else:
             print(f"[WARN] 缺少 sagittal_midResize.png: {l3_overlay_dir}")
 
