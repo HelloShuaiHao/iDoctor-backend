@@ -2,6 +2,7 @@ import os
 import csv
 import shutil
 import argparse
+import re   # 新增
 
 def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
     os.makedirs(out_root, exist_ok=True)
@@ -10,10 +11,15 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
     cases_processed = 0
     cases_missing_csv = 0
 
+    date_pattern = re.compile(r'_[0-9]{8}$')  # 匹配末尾的 _YYYYMMDD
+
     for case_dir in sorted(os.listdir(data_root)):
         case_path = os.path.join(data_root, case_dir)
         if not os.path.isdir(case_path):
             continue
+
+        # 去掉末尾日期作为最终编号
+        base_id = date_pattern.sub('', case_dir)
 
         csv_path = os.path.join(case_path, "output", "full_overlay", "hu_statistics_middle_only.csv")
         if not os.path.isfile(csv_path):
@@ -21,7 +27,6 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
             cases_missing_csv += 1
             continue
 
-        # 读取 CSV (假定分隔符可能是逗号或制表符，做简单探测)
         with open(csv_path, "r", encoding="utf-8") as f:
             sample = f.read(4096)
             f.seek(0)
@@ -32,22 +37,21 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
                 print(f"[WARN] 空文件: {csv_path}")
                 continue
             if header is None:
+                # 只保留去日期后的编号列，不再写原目录名
                 header = ["case_id"] + rows[0]
             else:
-                # 校验列数
                 if len(rows[0]) != len(header) - 1:
                     print(f"[WARN] 列不匹配: {csv_path}")
-            # 数据行（通常只有一行；如果多行全部追加）
             for data_row in rows[1:]:
                 if not data_row:
                     continue
-                summary_rows.append([case_dir] + data_row)
+                summary_rows.append([base_id] + data_row)
 
-        # 复制图片
-        dst_case_dir = os.path.join(out_root, case_dir)
+        # 输出目录用去日期后的 base_id（可能多个日期合并到同一目录）
+        dst_case_dir = os.path.join(out_root, base_id)
         os.makedirs(dst_case_dir, exist_ok=True)
 
-        # 1) 横断面 middle 图
+        # 1) 复制 *_middle.png
         full_overlay_dir = os.path.join(case_path, "output", "full_overlay")
         copied_any = False
         if os.path.isdir(full_overlay_dir):
@@ -58,7 +62,6 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
                     shutil.copy2(src, dst)
                     copied_any = True
         if not copied_any:
-            # 兼容有的命名为 slice_XXX_middle.png 中间含 _middle
             for fname in sorted(os.listdir(full_overlay_dir)) if os.path.isdir(full_overlay_dir) else []:
                 if fname.endswith(".png") and "_middle" in fname:
                     src = os.path.join(full_overlay_dir, fname)
@@ -68,10 +71,11 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
         if not copied_any:
             print(f"[INFO] 未找到 middle 图: {full_overlay_dir}")
 
-        # 2) 矢状图
+        # 2) 复制 sagittal_midResize.png
         l3_overlay_dir = os.path.join(case_path, "output", "L3_overlay")
         sagittal_png = os.path.join(l3_overlay_dir, "sagittal_midResize.png")
         if os.path.isfile(sagittal_png):
+            # 若已存在且来自不同日期，可选择覆盖；需要区分可改名: f"sagittal_midResize_{case_dir}.png"
             shutil.copy2(sagittal_png, os.path.join(dst_case_dir, "sagittal_midResize.png"))
         else:
             print(f"[WARN] 缺少 sagittal_midResize.png: {l3_overlay_dir}")
