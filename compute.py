@@ -51,40 +51,6 @@ def compute_mask_hu_statistics(dicom_path, mask_bool):
         "area_mm2": float(np.round(area_mm2, 2))
     }
 
-# # 过滤HU值
-# def compute_mask_hu_statistics(dicom_path, mask_bool):
-#     hu_image, pixel_size_mm = load_dicom_hu(dicom_path)
-
-#     if mask_bool.dtype != bool:
-#         mask_bool = mask_bool.astype(bool)
-#     if not np.any(mask_bool):
-#         return {
-#             "pixels": 0, "hu_mean": np.nan, "hu_min": np.nan, "hu_max": np.nan,
-#             "hu_sum": np.nan, "area_mm2": 0.0
-#         }
-
-#     hu_values = hu_image[mask_bool]
-
-#     # [0, 100]
-#     hu_values = hu_values[(hu_values >= 0) & (hu_values <= 100)]
-
-#     if len(hu_values) == 0:
-#         return {
-#             "pixels": 0, "hu_mean": np.nan, "hu_min": np.nan, "hu_max": np.nan,
-#             "hu_sum": np.nan, "area_mm2": 0.0
-#         }
-
-#     area_mm2 = float(len(hu_values)) * (pixel_size_mm ** 2)
-
-#     return {
-#         "pixels": int(len(hu_values)),
-#         "hu_mean": float(np.round(np.mean(hu_values), 2)),
-#         "hu_min": float(np.round(np.min(hu_values), 2)),
-#         "hu_max": float(np.round(np.max(hu_values), 2)),
-#         "hu_sum": float(np.round(np.sum(hu_values), 2)),
-#         "area_mm2": float(np.round(area_mm2, 2))
-#     }
-
 
 def clean_full_mask(mask_gray, area_thresh=1000, area_ratio_thresh=0.05, morph_ksize=3, morph_iters=1):
     bin_ = (mask_gray > 0).astype(np.uint8)
@@ -279,30 +245,45 @@ def process_all(
     print(f"[保存] 中间张参数：{mid_csv}")
     print(f"[保存] 中间张覆盖图：\n  - {dst1}\n  - {dst2}")
 
+def compute_manual_middle_statistics(slice_path, mask_path, full_overlay_dir, middle_name):
+    import cv2
+    import pandas as pd
+    import numpy as np
+    img = cv2.imread(slice_path, cv2.IMREAD_UNCHANGED)
+    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+    if img is None or mask is None:
+        return {"error": "读取图片或mask失败"}
 
+    mask_bin = (mask > 0).astype(np.uint8)
+    dicom_dir = os.path.dirname(os.path.dirname(slice_path))  # output/Axisal/../..
+    dicom_dir = os.path.join(dicom_dir, "input")
+    slice_id = "".join([c for c in middle_name if c.isdigit()])
+    dicom_file = None
+    for f in os.listdir(dicom_dir):
+        if slice_id in f and f.lower().endswith((".dcm", ".dcm.pk")):
+            dicom_file = os.path.join(dicom_dir, f)
+            break
+    if not dicom_file:
+        return {"error": "未找到对应 DICOM"}
 
-# if __name__ == "__main__":
-#     # 替换为你的真实路径
-#     psoas_mask_dir = "/path/to/psoas_masks"
-#     full_mask_dir  = "/path/to/full_masks"
-#     slice_dir      = "/path/to/slices"
-#     dicom_dir      = "/path/to/dicoms"
-#     overlay_psoas_dir = "/path/to/output_overlay_psoas"
-#     overlay_combo_dir = "/path/to/output_overlay_combo"
-#     clean_full_mask_dir = "/path/to/output_clean_full"
-
-#     process_all(
-#         psoas_mask_dir=psoas_mask_dir,
-#         full_mask_dir=full_mask_dir,
-#         slice_dir=slice_dir,
-#         dicom_dir=dicom_dir,
-#         overlay_psoas_dir=overlay_psoas_dir,
-#         overlay_combo_dir=overlay_combo_dir,
-#         clean_full_mask_dir=clean_full_mask_dir,
-#         pattern="*.png",              # 如为 .jpg 可改成 *.jpg
-#         area_thresh=1000,            # 最小绝对面积阈值（像素）
-#         area_ratio_thresh=0.05,       # 相对最大连通域的比例阈值（保留 ≥5% 最大块）
-#         morph_ksize=3,                # 形态学核
-#         morph_iters=1,                # 形态学迭代次数
-#         overlay_alpha=0.5             # 覆盖透明度
-#     )
+    stat = compute_mask_hu_statistics(dicom_file, mask_bin == 1)
+    overlay = overlay_mask_on_image(img, mask, color=(0, 255, 0), alpha=0.5)
+    overlay_path = os.path.join(full_overlay_dir, f"{middle_name}_manual_overlay.png")
+    cv2.imwrite(overlay_path, overlay)
+    df = pd.DataFrame([{
+        "filename": middle_name,
+        "manual_pixels": stat["pixels"],
+        "manual_hu_mean": stat["hu_mean"],
+        "manual_hu_min": stat["hu_min"],
+        "manual_hu_max": stat["hu_max"],
+        "manual_hu_sum": stat["hu_sum"],
+        "manual_area_mm2": stat["area_mm2"],
+        "is_manual_middle": True
+    }])
+    csv_path = os.path.join(full_overlay_dir, "hu_statistics_middle_manual.csv")
+    df.to_csv(csv_path, index=False)
+    return {
+        "csv": csv_path,
+        "overlay": overlay_path,
+        "stat": stat
+    }

@@ -10,6 +10,7 @@ from all_new import l3_detect, continue_after_l3, generate_sagittal, SAGITTAL_CL
 from fastapi.responses import FileResponse
 from fastapi import FastAPI, UploadFile, File, Form, Query
 
+from compute import compute_manual_middle_statistics
 
 
 app = FastAPI()
@@ -29,7 +30,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 DATA_ROOT = "data"
 
@@ -126,7 +126,6 @@ def get_image(patient_name: str, study_date: str, filename: str):
         return {"error": "图片不存在"}
     return FileResponse(img_path, media_type="image/png")    
 
-
 @app.post("/l3_detect/{patient_name}/{study_date}")
 def api_l3_detect(patient_name: str, study_date: str):
     folder = f"{patient_name}_{study_date}"
@@ -186,3 +185,33 @@ async def upload_l3_mask(patient: str, date: str, file: UploadFile = File(...)):
     clean_mask_folder(mask_dir, clean_dir)
     overlay_and_save(png_dir, clean_dir, overlay_dir)
     return {"status": "ok", "message": "手动 L3 mask 已覆盖", "overlay": f"L3_overlay/{SAGITTAL_CLEAN}"}
+
+@app.post("/upload_middle_manual_mask/{patient}/{date}")
+async def upload_middle_manual_mask(patient: str, date: str, file: UploadFile = File(...)):
+    folder = f"{patient}_{date}"
+    output_folder = os.path.join("data", folder, "output")
+    full_overlay_dir = os.path.join(output_folder, "full_overlay")
+    axisal_dir = os.path.join(output_folder, "Axisal")
+    manual_mask_dir = os.path.join(output_folder, "manual_middle_mask")
+    os.makedirs(manual_mask_dir, exist_ok=True)
+
+    csv_path = os.path.join(full_overlay_dir, "hu_statistics_middle_only.csv")
+    import pandas as pd
+    if not os.path.isfile(csv_path):
+        return {"error": "缺少 hu_statistics_middle_only.csv"}
+    df = pd.read_csv(csv_path)
+    if "filename" not in df.columns or df.empty:
+        return {"error": "CSV 文件无有效 filename"}
+    middle_name = df.iloc[0]["filename"]
+    axisal_path = os.path.join(axisal_dir, middle_name)
+    if not os.path.isfile(axisal_path):
+        return {"error": f"未找到原图 {middle_name}"}
+
+    # 保存上传的 mask
+    manual_mask_path = os.path.join(manual_mask_dir, middle_name)
+    with open(manual_mask_path, "wb") as f:
+        f.write(await file.read())
+
+    # 统计并生成 overlay
+    result = compute_manual_middle_statistics(axisal_path, manual_mask_path, full_overlay_dir, middle_name)
+    return result

@@ -73,6 +73,6 @@ class RectMaskTool:
         cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    img_path = "sagittal_midResize_0000.png"
-    mask_path = "sagittal_midResize.png"
+    img_path = "slice_105_original.png"
+    mask_path = "slice_105_mask.png"
     RectMaskTool(img_path, mask_path).run()
