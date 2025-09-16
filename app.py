@@ -195,9 +195,11 @@ async def upload_middle_manual_mask(
     folder = f"{patient}_{date}"
     output_folder = os.path.join("data", folder, "output")
     full_overlay_dir = os.path.join(output_folder, "full_overlay")
-    axisal_dir = os.path.join(output_folder, "Axisal")
     manual_mask_dir = os.path.join(output_folder, "manual_middle_mask")
-    os.makedirs(manual_mask_dir, exist_ok=True)
+    # 清空 old 文件（只删 middle 相关和 csv）
+    safe_clear_folder(full_overlay_dir, ["_middle.png", "hu_statistics_middle_only.csv"])
+    safe_clear_folder(manual_mask_dir, ["_psoas.png", "_combo.png"])
+
 
     # 读取 full_overlay/hu_statistics_middle_only.csv，定位 filename
     csv_path = os.path.join(full_overlay_dir, "hu_statistics_middle_only.csv")
@@ -233,3 +235,14 @@ async def upload_middle_manual_mask(
     # 统计并生成 overlay
     result = compute_manual_middle_statistics(axisal_path, psoas_mask_path, combo_mask_path, full_overlay_dir, base_name)
     return result
+
+def safe_clear_folder(folder, patterns):
+    if not os.path.isdir(folder):
+        return
+    for fname in os.listdir(folder):
+        for pat in patterns:
+            if fname.endswith(pat):
+                try:
+                    os.remove(os.path.join(folder, fname))
+                except Exception:
+                    pass

@@ -288,19 +288,19 @@ def compute_manual_middle_statistics(slice_path, psoas_mask_path, combo_mask_pat
     stat_psoas = compute_mask_hu_statistics(dicom_file, psoas_bin == 1)
     stat_combo = compute_mask_hu_statistics(dicom_file, combo_bin == 1)
 
-    # overlay: psoas红色，combo绿色，重叠黄色
+    # overlay: psoas红色，combo绿色，重叠黄色（颜色更亮，alpha更高）
     overlay = img.copy()
     if len(overlay.shape) == 2 or overlay.shape[2] == 1:
         overlay = cv2.cvtColor(overlay, cv2.COLOR_GRAY2BGR)
     color_overlay = np.zeros_like(overlay)
     # psoas红色
-    color_overlay[psoas_mask == 255] = (0, 0, 255)
+    color_overlay[psoas_mask == 255] = (255, 0, 0)
     # combo绿色
     color_overlay[combo_mask == 255] = (0, 255, 0)
     # 重叠区域黄色
-    color_overlay[(psoas_mask == 255) & (combo_mask == 255)] = (0, 255, 255)
-    out = cv2.addWeighted(overlay, 0.7, color_overlay, 0.3, 0)
-
+    color_overlay[(psoas_mask == 255) & (combo_mask == 255)] = (255, 255, 0)
+    out = cv2.addWeighted(overlay, 0.3, color_overlay, 0.7, 0)  # 提高mask对比度
+    
     overlay_path = os.path.join(full_overlay_dir, f"{os.path.splitext(middle_name)[0]}_middle.png")
     csv_path = os.path.join(full_overlay_dir, "hu_statistics_middle_only.csv")
     if os.path.exists(overlay_path):

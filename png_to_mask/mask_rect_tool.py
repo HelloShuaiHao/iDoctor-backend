@@ -74,5 +74,6 @@ class RectMaskTool:
 
 if __name__ == "__main__":
     img_path = "slice_105_original.png"
-    mask_path = "slice_105_mask.png"
+    # mask_path = "slice_105_psoas.png"
+    mask_path = "slice_105_combo.png"
     RectMaskTool(img_path, mask_path).run()
