@@ -249,6 +249,8 @@ def compute_manual_middle_statistics(slice_path, mask_path, full_overlay_dir, mi
     import cv2
     import pandas as pd
     import numpy as np
+    import os
+
     img = cv2.imread(slice_path, cv2.IMREAD_UNCHANGED)
     mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
     if img is None or mask is None:
@@ -269,11 +271,20 @@ def compute_manual_middle_statistics(slice_path, mask_path, full_overlay_dir, mi
         return {"error": "未找到对应 DICOM"}
 
     stat = compute_mask_hu_statistics(dicom_file, mask_bin == 1)
+
+    # 命名方式与自动流程一致
+    overlay_path = os.path.join(full_overlay_dir, f"{os.path.splitext(middle_name)[0]}_middle.png")
+    csv_path = os.path.join(full_overlay_dir, "hu_statistics_middle_only.csv")
+    # 删除旧文件
+    if os.path.exists(overlay_path):
+        os.remove(overlay_path)
+    if os.path.exists(csv_path):
+        os.remove(csv_path)
+
     overlay = overlay_mask_on_image(img, mask, color=(0, 255, 0), alpha=0.5)
-    overlay_path = os.path.join(full_overlay_dir, f"{middle_name}_manual_overlay.png")
     cv2.imwrite(overlay_path, overlay)
     df = pd.DataFrame([{
-        "filename": middle_name,
+        "filename": f"{os.path.splitext(middle_name)[0]}_middle.png",
         "manual_pixels": stat["pixels"],
         "manual_hu_mean": stat["hu_mean"],
         "manual_hu_min": stat["hu_min"],
@@ -282,7 +293,6 @@ def compute_manual_middle_statistics(slice_path, mask_path, full_overlay_dir, mi
         "manual_area_mm2": stat["area_mm2"],
         "is_manual_middle": True
     }])
-    csv_path = os.path.join(full_overlay_dir, "hu_statistics_middle_manual.csv")
     df.to_csv(csv_path, index=False)
     return {
         "csv": csv_path,
