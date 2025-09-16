@@ -195,6 +195,7 @@ async def upload_middle_manual_mask(patient: str, date: str, file: UploadFile = 
     manual_mask_dir = os.path.join(output_folder, "manual_middle_mask")
     os.makedirs(manual_mask_dir, exist_ok=True)
 
+    # 读取 full_overlay/hu_statistics_middle_only.csv，定位 filename
     csv_path = os.path.join(full_overlay_dir, "hu_statistics_middle_only.csv")
     import pandas as pd
     if not os.path.isfile(csv_path):
@@ -202,16 +203,19 @@ async def upload_middle_manual_mask(patient: str, date: str, file: UploadFile = 
     df = pd.read_csv(csv_path)
     if "filename" not in df.columns or df.empty:
         return {"error": "CSV 文件无有效 filename"}
-    middle_name = df.iloc[0]["filename"]
-    axisal_path = os.path.join(axisal_dir, middle_name)
+    middle_name = df.iloc[0]["filename"]  # 例如 slice_105_middle.png
+
+    # 去掉 _middle 后缀，得到原图名
+    base_name = middle_name.replace("_middle.png", ".png")
+    axisal_path = os.path.join(axisal_dir, base_name)
     if not os.path.isfile(axisal_path):
-        return {"error": f"未找到原图 {middle_name}"}
+        return {"error": f"未找到原图 {base_name}"}
 
     # 保存上传的 mask
-    manual_mask_path = os.path.join(manual_mask_dir, middle_name)
+    manual_mask_path = os.path.join(manual_mask_dir, base_name)
     with open(manual_mask_path, "wb") as f:
         f.write(await file.read())
 
     # 统计并生成 overlay
-    result = compute_manual_middle_statistics(axisal_path, manual_mask_path, full_overlay_dir, middle_name)
+    result = compute_manual_middle_statistics(axisal_path, manual_mask_path, full_overlay_dir, base_name)
     return result
