@@ -187,7 +187,11 @@ async def upload_l3_mask(patient: str, date: str, file: UploadFile = File(...)):
     return {"status": "ok", "message": "手动 L3 mask 已覆盖", "overlay": f"L3_overlay/{SAGITTAL_CLEAN}"}
 
 @app.post("/upload_middle_manual_mask/{patient}/{date}")
-async def upload_middle_manual_mask(patient: str, date: str, file: UploadFile = File(...)):
+async def upload_middle_manual_mask(
+    patient: str, date: str,
+    psoas_mask: UploadFile = File(None),
+    combo_mask: UploadFile = File(None)
+):
     folder = f"{patient}_{date}"
     output_folder = os.path.join("data", folder, "output")
     full_overlay_dir = os.path.join(output_folder, "full_overlay")
@@ -205,17 +209,27 @@ async def upload_middle_manual_mask(patient: str, date: str, file: UploadFile = 
         return {"error": "CSV 文件无有效 filename"}
     middle_name = df.iloc[0]["filename"]  # 例如 slice_105_middle.png
 
-    # 去掉 _middle 后缀，得到原图名
     base_name = middle_name.replace("_middle.png", ".png")
     axisal_path = os.path.join(axisal_dir, base_name)
     if not os.path.isfile(axisal_path):
         return {"error": f"未找到原图 {base_name}"}
 
-    # 保存上传的 mask
-    manual_mask_path = os.path.join(manual_mask_dir, base_name)
-    with open(manual_mask_path, "wb") as f:
-        f.write(await file.read())
+    # 保存 psoas mask
+    psoas_mask_path = os.path.join(manual_mask_dir, f"{base_name}_psoas.png")
+    if psoas_mask is not None:
+        with open(psoas_mask_path, "wb") as f:
+            f.write(await psoas_mask.read())
+    else:
+        psoas_mask_path = None
+
+    # 保存 combo mask
+    combo_mask_path = os.path.join(manual_mask_dir, f"{base_name}_combo.png")
+    if combo_mask is not None:
+        with open(combo_mask_path, "wb") as f:
+            f.write(await combo_mask.read())
+    else:
+        combo_mask_path = None
 
     # 统计并生成 overlay
-    result = compute_manual_middle_statistics(axisal_path, manual_mask_path, full_overlay_dir, base_name)
+    result = compute_manual_middle_statistics(axisal_path, psoas_mask_path, combo_mask_path, full_overlay_dir, base_name)
     return result

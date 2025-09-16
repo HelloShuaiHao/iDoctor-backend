@@ -245,20 +245,35 @@ def process_all(
     print(f"[保存] 中间张参数：{mid_csv}")
     print(f"[保存] 中间张覆盖图：\n  - {dst1}\n  - {dst2}")
 
-def compute_manual_middle_statistics(slice_path, mask_path, full_overlay_dir, middle_name):
+def compute_manual_middle_statistics(slice_path, psoas_mask_path, combo_mask_path, full_overlay_dir, middle_name):
     import cv2
     import pandas as pd
     import numpy as np
     import os
 
     img = cv2.imread(slice_path, cv2.IMREAD_UNCHANGED)
-    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-    if img is None or mask is None:
-        return {"error": "读取图片或mask失败"}
+    h, w = img.shape[:2]
 
-    mask_bin = (mask > 0).astype(np.uint8)
+    # 读取 psoas mask
+    if psoas_mask_path and os.path.exists(psoas_mask_path):
+        psoas_mask = cv2.imread(psoas_mask_path, cv2.IMREAD_GRAYSCALE)
+        if psoas_mask is None or psoas_mask.shape != (h, w):
+            psoas_mask = np.zeros((h, w), dtype=np.uint8)
+    else:
+        psoas_mask = np.zeros((h, w), dtype=np.uint8)
 
-    case_root = os.path.dirname(os.path.dirname(os.path.dirname(slice_path)))  # .../data/158876_20250914
+    # 读取 combo mask
+    if combo_mask_path and os.path.exists(combo_mask_path):
+        combo_mask = cv2.imread(combo_mask_path, cv2.IMREAD_GRAYSCALE)
+        if combo_mask is None or combo_mask.shape != (h, w):
+            combo_mask = np.zeros((h, w), dtype=np.uint8)
+    else:
+        combo_mask = np.zeros((h, w), dtype=np.uint8)
+
+    psoas_bin = (psoas_mask > 0).astype(np.uint8)
+    combo_bin = (combo_mask > 0).astype(np.uint8)
+
+    case_root = os.path.dirname(os.path.dirname(os.path.dirname(slice_path)))
     dicom_dir = os.path.join(case_root, "input")
 
     slice_id = "".join([c for c in middle_name if c.isdigit()])
@@ -270,32 +285,50 @@ def compute_manual_middle_statistics(slice_path, mask_path, full_overlay_dir, mi
     if not dicom_file:
         return {"error": "未找到对应 DICOM"}
 
-    stat = compute_mask_hu_statistics(dicom_file, mask_bin == 1)
+    stat_psoas = compute_mask_hu_statistics(dicom_file, psoas_bin == 1)
+    stat_combo = compute_mask_hu_statistics(dicom_file, combo_bin == 1)
 
-    # 命名方式与自动流程一致
+    # overlay: psoas红色，combo绿色，重叠黄色
+    overlay = img.copy()
+    if len(overlay.shape) == 2 or overlay.shape[2] == 1:
+        overlay = cv2.cvtColor(overlay, cv2.COLOR_GRAY2BGR)
+    color_overlay = np.zeros_like(overlay)
+    # psoas红色
+    color_overlay[psoas_mask == 255] = (0, 0, 255)
+    # combo绿色
+    color_overlay[combo_mask == 255] = (0, 255, 0)
+    # 重叠区域黄色
+    color_overlay[(psoas_mask == 255) & (combo_mask == 255)] = (0, 255, 255)
+    out = cv2.addWeighted(overlay, 0.7, color_overlay, 0.3, 0)
+
     overlay_path = os.path.join(full_overlay_dir, f"{os.path.splitext(middle_name)[0]}_middle.png")
     csv_path = os.path.join(full_overlay_dir, "hu_statistics_middle_only.csv")
-    # 删除旧文件
     if os.path.exists(overlay_path):
         os.remove(overlay_path)
     if os.path.exists(csv_path):
         os.remove(csv_path)
 
-    overlay = overlay_mask_on_image(img, mask, color=(0, 255, 0), alpha=0.5)
-    cv2.imwrite(overlay_path, overlay)
+    cv2.imwrite(overlay_path, out)
     df = pd.DataFrame([{
         "filename": f"{os.path.splitext(middle_name)[0]}_middle.png",
-        "psoas_pixels": stat["pixels"],
-        "psoas_hu_mean": stat["hu_mean"],
-        "psoas_hu_min": stat["hu_min"],
-        "psoas_hu_max": stat["hu_max"],
-        "psoas_hu_sum": stat["hu_sum"],
-        "psoas_area_mm2": stat["area_mm2"],
+        "psoas_pixels": stat_psoas["pixels"],
+        "psoas_hu_mean": stat_psoas["hu_mean"],
+        "psoas_hu_min": stat_psoas["hu_min"],
+        "psoas_hu_max": stat_psoas["hu_max"],
+        "psoas_hu_sum": stat_psoas["hu_sum"],
+        "psoas_area_mm2": stat_psoas["area_mm2"],
+        "combo_pixels": stat_combo["pixels"],
+        "combo_hu_mean": stat_combo["hu_mean"],
+        "combo_hu_min": stat_combo["hu_min"],
+        "combo_hu_max": stat_combo["hu_max"],
+        "combo_hu_sum": stat_combo["hu_sum"],
+        "combo_area_mm2": stat_combo["area_mm2"],
         "is_middle": True
     }])
     df.to_csv(csv_path, index=False)
     return {
         "csv": csv_path,
         "overlay": overlay_path,
-        "stat": stat
+        "stat_psoas": stat_psoas,
+        "stat_combo": stat_combo
     }
