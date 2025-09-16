@@ -196,10 +196,9 @@ async def upload_middle_manual_mask(
     output_folder = os.path.join("data", folder, "output")
     full_overlay_dir = os.path.join(output_folder, "full_overlay")
     manual_mask_dir = os.path.join(output_folder, "manual_middle_mask")
-    # 清空 old 文件（只删 middle 相关和 csv）
-    safe_clear_folder(full_overlay_dir, ["_middle.png", "hu_statistics_middle_only.csv"])
+    # 清空 old 文件（只删 middle 相关图片和 mask，不删 csv）
+    safe_clear_folder(full_overlay_dir, ["_middle.png"])
     safe_clear_folder(manual_mask_dir, ["_psoas.png", "_combo.png"])
-
 
     # 读取 full_overlay/hu_statistics_middle_only.csv，定位 filename
     csv_path = os.path.join(full_overlay_dir, "hu_statistics_middle_only.csv")
