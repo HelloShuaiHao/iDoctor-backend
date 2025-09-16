@@ -255,8 +255,10 @@ def compute_manual_middle_statistics(slice_path, mask_path, full_overlay_dir, mi
         return {"error": "读取图片或mask失败"}
 
     mask_bin = (mask > 0).astype(np.uint8)
-    dicom_dir = os.path.dirname(os.path.dirname(slice_path))  # output/Axisal/../..
-    dicom_dir = os.path.join(dicom_dir, "input")
+
+    case_root = os.path.dirname(os.path.dirname(os.path.dirname(slice_path)))  # .../data/158876_20250914
+    dicom_dir = os.path.join(case_root, "input")
+
     slice_id = "".join([c for c in middle_name if c.isdigit()])
     dicom_file = None
     for f in os.listdir(dicom_dir):
