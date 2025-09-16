@@ -285,13 +285,13 @@ def compute_manual_middle_statistics(slice_path, mask_path, full_overlay_dir, mi
     cv2.imwrite(overlay_path, overlay)
     df = pd.DataFrame([{
         "filename": f"{os.path.splitext(middle_name)[0]}_middle.png",
-        "manual_pixels": stat["pixels"],
-        "manual_hu_mean": stat["hu_mean"],
-        "manual_hu_min": stat["hu_min"],
-        "manual_hu_max": stat["hu_max"],
-        "manual_hu_sum": stat["hu_sum"],
-        "manual_area_mm2": stat["area_mm2"],
-        "is_manual_middle": True
+        "psoas_pixels": stat["pixels"],
+        "psoas_hu_mean": stat["hu_mean"],
+        "psoas_hu_min": stat["hu_min"],
+        "psoas_hu_max": stat["hu_max"],
+        "psoas_hu_sum": stat["hu_sum"],
+        "psoas_area_mm2": stat["area_mm2"],
+        "is_middle": True
     }])
     df.to_csv(csv_path, index=False)
     return {
