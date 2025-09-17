@@ -22,6 +22,8 @@ origins = [
     "https://ai.bygpu.com:55304",
     "http://ai.bygpu.com",
     "https://ai.bygpu.com",
+    "http://ai.bygpu.com:55303",   
+    "https://ai.bygpu.com:55303", 
 ]
 app.add_middleware(
     CORSMiddleware,
