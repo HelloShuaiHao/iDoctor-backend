@@ -101,18 +101,19 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
         else:
             print(f"[WARN] 缺少 sagittal_midResize.png: {l3_overlay_dir}")
 
-            # 复制 manual_middle_mask 文件夹内容
-            manual_mask_src = os.path.join(case_path, "output", "manual_middle_mask")
-            manual_mask_dst = os.path.join(dst_case_dir, "manual_middle_mask")
-            if os.path.isdir(manual_mask_src):
-                os.makedirs(manual_mask_dst, exist_ok=True)
-                for fname in sorted(os.listdir(manual_mask_src)):
-                    src = os.path.join(manual_mask_src, fname)
-                    dst = os.path.join(manual_mask_dst, fname)
-                    if os.path.isfile(src):
-                        shutil.copy2(src, dst)
-            else:
-                print(f"[WARN] 缺少 manual_middle_mask: {manual_mask_src}")
+        # 复制 manual_middle_mask 文件夹内容（始终执行）
+        manual_mask_src = os.path.join(case_path, "output", "manual_middle_mask")
+        manual_mask_dst = os.path.join(dst_case_dir, "manual_middle_mask")
+        if os.path.isdir(manual_mask_src):
+            os.makedirs(manual_mask_dst, exist_ok=True)
+            for fname in sorted(os.listdir(manual_mask_src)):
+                src = os.path.join(manual_mask_src, fname)
+                dst = os.path.join(manual_mask_dst, fname)
+                if os.path.isfile(src):
+                    shutil.copy2(src, dst)
+        else:
+            print(f"[WARN] 缺少 manual_middle_mask: {manual_mask_src}")
+
         cases_processed += 1
 
     if header is None:
