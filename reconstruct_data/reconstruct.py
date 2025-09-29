@@ -3,7 +3,7 @@ import argparse
 import shutil
 
 # 固定日期
-FIXED_DATE = "20250914"
+FIXED_DATE = "20250929"
 
 def is_dicom(name: str) -> bool:
     return (not name.startswith("._")) and name.lower().endswith(".dcm")
