@@ -1,5 +1,6 @@
 1504425/
-nnUNet_results/
+nnUNet_results/*
+!nnUNet_results/.gitkeep
 nnunetv2/
 data/
 test.zip
