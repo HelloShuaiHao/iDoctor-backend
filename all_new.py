@@ -158,10 +158,11 @@ def main(input_folder, output_folder):
 def l3_detect(input_folder, output_folder):
     L3_png_folder = os.path.join(output_folder, "L3_png")
     ver_folder = os.path.join(output_folder, "verseg")
-    # L3_mask_folder = os.path.join(output_folder, "L3_mask")
-    # L3_cleaned_mask_folder = os.path.join(output_folder, "L3_clean_mask")
-    # L3_overlay_folder = os.path.join(output_folder, "L3_overlay")
-    for d in [L3_png_folder, ver_folder]:
+    L3_mask_folder = os.path.join(output_folder, "L3_mask")
+    L3_clean_mask_folder = os.path.join(output_folder, "L3_clean_mask")
+    L3_overlay_folder = os.path.join(output_folder, "L3_overlay")
+    
+    for d in [L3_png_folder, ver_folder, L3_mask_folder, L3_clean_mask_folder, L3_overlay_folder]:
         os.makedirs(d, exist_ok=True)
 
     if not os.path.exists(os.path.join(L3_png_folder, SAGITTAL_CLEAN)):
@@ -172,29 +173,32 @@ def l3_detect(input_folder, output_folder):
 
     img_path = os.path.join(L3_png_folder, SAGITTAL_INPUT)
     results = process_spine_and_vertebrae(img_path, whole_weights, vertebra_weights, ver_folder)
-    L3_mask_path = results["L3_mask"]
-    print("L3_mask_path:", L3_mask_path)
-    # mask = load_mask(L3_mask_path)
-    # restored_mask = cv2.resize(mask, (orig_width, orig_height), interpolation=cv2.INTER_NEAREST)
     
-    # return {
-    #     "sagittal_png": f"L3_png/{SAGITTAL_CLEAN}",
-    #     "l3_mask": f"L3_clean_mask/{SAGITTAL_CLEAN}",
-    #     "l3_overlay": f"L3_overlay/{SAGITTAL_CLEAN}",
-    #     "auto": True
-    # }
-
-    label = "L3"
-    base_name = os.path.splitext(os.path.basename(img_path))[0]
-    L3_mask_path = os.path.join(ver_folder, f"{base_name}_{label}_mask.png")
-    L3_overlay_path = os.path.join(ver_folder, f"{base_name}_{label}_overlay.png")
-    whole_overlay_path = os.path.join(ver_folder, f"{base_name}_whole_overlay.png")
-    vertebra_overlay_path = os.path.join(ver_folder, f"{base_name}_vertebra_overlay.png")
+    # 复制结果到原有目录结构
+    import shutil
+    base_name = "sagittal_midResize_0000"
+    
+    # 复制 L3 mask 和 overlay
+    src_mask = os.path.join(ver_folder, f"{base_name}_L3_mask.png")
+    dst_mask = os.path.join(L3_mask_folder, SAGITTAL_CLEAN)
+    if os.path.exists(src_mask):
+        shutil.copy2(src_mask, dst_mask)
+    
+    src_overlay = os.path.join(ver_folder, f"{base_name}_L3_overlay.png") 
+    dst_overlay = os.path.join(L3_overlay_folder, SAGITTAL_CLEAN)
+    if os.path.exists(src_overlay):
+        shutil.copy2(src_overlay, dst_overlay)
+    
+    # 清理和生成最终 overlay
+    from sagit_save import clean_mask_folder, overlay_and_save
+    clean_mask_folder(L3_mask_folder, L3_clean_mask_folder)
+    overlay_and_save(L3_png_folder, L3_clean_mask_folder, L3_overlay_folder)
+    
     return {
-        "L3_mask": L3_mask_path,
-        "L3_overlay": L3_overlay_path,
-        "whole_overlay": whole_overlay_path,
-        "vertebra_overlay": vertebra_overlay_path
+        "sagittal_png": f"L3_png/{SAGITTAL_CLEAN}",
+        "l3_mask": f"L3_clean_mask/{SAGITTAL_CLEAN}",
+        "l3_overlay": f"L3_overlay/{SAGITTAL_CLEAN}",
+        "auto": True
     }
 
 def continue_after_l3(input_folder, output_folder):
