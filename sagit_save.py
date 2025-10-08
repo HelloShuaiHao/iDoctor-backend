@@ -63,6 +63,9 @@ def dicom_to_balanced_png(
         base_name_0000.png  (模型输入)
         base_name.png       (前端/手动标注)
     返回 (input_png_path, clean_png_path)
+
+    2025/10/04
+    使用 HU 值的 -100 到 200 范围进行线性归一
     """
     os.makedirs(out_dir, exist_ok=True)
 
@@ -71,20 +74,20 @@ def dicom_to_balanced_png(
 
     pixel_array = pixel_array * 1 - 100
 
-    center_val = ds.get("WindowCenter", np.mean(pixel_array))
-    width_val = ds.get("WindowWidth", np.max(pixel_array) - np.min(pixel_array))
-    if isinstance(center_val, pydicom.multival.MultiValue):
-        center_val = center_val[0]
-    if isinstance(width_val, pydicom.multival.MultiValue):
-        width_val = width_val[0]
+    # center_val = ds.get("WindowCenter", np.mean(pixel_array))
+    # width_val = ds.get("WindowWidth", np.max(pixel_array) - np.min(pixel_array))
+    # if isinstance(center_val, pydicom.multival.MultiValue):
+    #     center_val = center_val[0]
+    # if isinstance(width_val, pydicom.multival.MultiValue):
+    #     width_val = width_val[0]
 
-    center = float(default_center) if default_center is not None else float(center_val)
-    width = float(default_width) if default_width is not None else float(width_val)
-    if width < 1:
-        width = np.max(pixel_array) - np.min(pixel_array) + 1e-5
+    # center = float(default_center) if default_center is not None else float(center_val)
+    # width = float(default_width) if default_width is not None else float(width_val)
+    # if width < 1:
+    #     width = np.max(pixel_array) - np.min(pixel_array) + 1e-5
 
-    min_val = center - width / 2
-    max_val = center + width / 2
+    min_val = -100
+    max_val = 200
     hu_clipped = np.clip(pixel_array, min_val, max_val)
 
     hu_normalized = ((hu_clipped - min_val) / (max_val - min_val)) * 255.0
