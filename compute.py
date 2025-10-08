@@ -7,7 +7,6 @@ import pandas as pd
 from tqdm import tqdm
 import pydicom
 from pydicom.pixel_data_handlers.util import apply_modality_lut
-
 import SimpleITK as sitk
 
 def load_dicom_hu(dicom_path):
@@ -246,11 +245,6 @@ def process_all(
     print(f"[保存] 中间张覆盖图：\n  - {dst1}\n  - {dst2}")
 
 def compute_manual_middle_statistics(slice_path, psoas_mask_path, combo_mask_path, full_overlay_dir, middle_name):
-    import cv2
-    import pandas as pd
-    import numpy as np
-    import os
-
     img = cv2.imread(slice_path, cv2.IMREAD_UNCHANGED)
     h, w = img.shape[:2]
 
