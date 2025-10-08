@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import multiprocessing as mp
 from sagit_save import resize_and_save_sagittal_as_dicom, dicom_to_balanced_png, overlay_and_save, clean_mask_folder
+from verseg import process_spine_and_vertebrae
 from extract_slice import load_mask, extract_axial_slices_from_sagittal_mask, reversedNumber, convert_selected_slices
 
 from extract_slice import load_mask, extract_axial_slices_from_sagittal_mask,convert_selected_slices
@@ -38,9 +39,10 @@ def main(input_folder, output_folder):
     dicom_folder = input_folder
     # 所有输出目录都在 output_folder 下
     L3_png_folder = os.path.join(output_folder, "L3_png")
-    L3_mask_folder = os.path.join(output_folder, "L3_mask")
-    L3_cleaned_mask_folder = os.path.join(output_folder, "L3_clean_mask")
-    L3_overlay_folder = os.path.join(output_folder, "L3_overlay")
+    # L3_mask_folder = os.path.join(output_folder, "L3_mask")
+    # L3_cleaned_mask_folder = os.path.join(output_folder, "L3_clean_mask")
+    # L3_overlay_folder = os.path.join(output_folder, "L3_overlay")
+    ver_folder = os.path.join(output_folder, "verseg")
     slice_folder = os.path.join(output_folder, "Axisal")
     full_mask_folder = os.path.join(output_folder, "full_mask")
     clean_full_mask_folder = os.path.join(output_folder, "clean")
@@ -50,8 +52,8 @@ def main(input_folder, output_folder):
 
 
     # 模型路径
-    L3_model_dir = "nnUNet_results/Dataset003_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
-    L3_checkpoint = "checkpoint_final.pth"
+    whole_weights = "outputwhole/model_final.pth"
+    vertebra_weights = "outputnew/model_final.pth"
     full_model_dir="nnUNet_results/Dataset001_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
     full_checkpoint="checkpoint_final.pth"
 
@@ -88,17 +90,19 @@ def main(input_folder, output_folder):
     # return mask和overlay的地址
     # mask_path, overlay_path = process_image(image_path, L3_weights_path, L3_output_folder)
     clean_nnunet_input_folder(slice_folder)
-    clean_nnunet_input_folder(L3_png_folder)
 
-    run_nnunet_predict_and_overlay(L3_png_folder, L3_mask_folder, L3_model_dir, L3_checkpoint)
-    
-    clean_mask_folder(L3_mask_folder, L3_cleaned_mask_folder)
-    # overlay!!
-    overlay_and_save(L3_png_folder, L3_cleaned_mask_folder, L3_overlay_folder)
 
-    # Generate or load mask
-    image_path = os.path.join(L3_cleaned_mask_folder, "sagittal_midResize.png")
-    mask = load_mask(image_path)
+    """
+    2025/10/06
+    更改脊椎推理模型，可以推理出L1~L5，目前只取L3
+    之后根据L3的mask来提取横切图
+    输出： L3的mask_path, 整个脊椎的overlay_path，分割每个锥体的overlay_path
+    """
+    img_path = os.path.join(L3_png_folder, SAGITTAL_INPUT)
+    results = process_spine_and_vertebrae(img_path, whole_weights, vertebra_weights, ver_folder)
+    L3_mask_path = results["L3_mask"]
+    print("L3_mask_path:", L3_mask_path)
+    mask = load_mask(L3_mask_path)
     restored_mask = cv2.resize(mask, (orig_width, orig_height), interpolation=cv2.INTER_NEAREST)
 
     # 3. 找对应的横切图
@@ -152,47 +156,45 @@ def main(input_folder, output_folder):
     )
 
 def l3_detect(input_folder, output_folder):
-    import shutil
     L3_png_folder = os.path.join(output_folder, "L3_png")
-    L3_mask_folder = os.path.join(output_folder, "L3_mask")
-    L3_cleaned_mask_folder = os.path.join(output_folder, "L3_clean_mask")
-    L3_overlay_folder = os.path.join(output_folder, "L3_overlay")
-    for d in [L3_png_folder, L3_mask_folder, L3_cleaned_mask_folder, L3_overlay_folder]:
+    ver_folder = os.path.join(output_folder, "verseg")
+    # L3_mask_folder = os.path.join(output_folder, "L3_mask")
+    # L3_cleaned_mask_folder = os.path.join(output_folder, "L3_clean_mask")
+    # L3_overlay_folder = os.path.join(output_folder, "L3_overlay")
+    for d in [L3_png_folder, ver_folder]:
         os.makedirs(d, exist_ok=True)
 
     if not os.path.exists(os.path.join(L3_png_folder, SAGITTAL_CLEAN)):
         generate_sagittal(input_folder, output_folder, force=False)
 
-    # 只用 _0000.png 作为 nnUNet 输入
-    nnunet_input = os.path.join(output_folder, "L3_nnUnet_input")
-    os.makedirs(nnunet_input, exist_ok=True)
-    # 清空临时目录
-    for f in os.listdir(nnunet_input):
-        os.remove(os.path.join(nnunet_input, f))
-    # 只复制 _0000.png
-    src = os.path.join(L3_png_folder, SAGITTAL_INPUT)
-    dst = os.path.join(nnunet_input, SAGITTAL_INPUT)
-    shutil.copyfile(src, dst)
+    whole_weights = "outputwhole/model_final.pth"
+    vertebra_weights = "outputnew/model_final.pth"
 
-    # 自动分割
-    L3_model_dir = "nnUNet_results/Dataset003_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
-    L3_checkpoint = "checkpoint_final.pth"
-    run_nnunet_predict_and_overlay(nnunet_input, L3_mask_folder, L3_model_dir, L3_checkpoint)
+    img_path = os.path.join(L3_png_folder, SAGITTAL_INPUT)
+    results = process_spine_and_vertebrae(img_path, whole_weights, vertebra_weights, ver_folder)
+    L3_mask_path = results["L3_mask"]
+    print("L3_mask_path:", L3_mask_path)
+    # mask = load_mask(L3_mask_path)
+    # restored_mask = cv2.resize(mask, (orig_width, orig_height), interpolation=cv2.INTER_NEAREST)
+    
+    # return {
+    #     "sagittal_png": f"L3_png/{SAGITTAL_CLEAN}",
+    #     "l3_mask": f"L3_clean_mask/{SAGITTAL_CLEAN}",
+    #     "l3_overlay": f"L3_overlay/{SAGITTAL_CLEAN}",
+    #     "auto": True
+    # }
 
-    # 标准化：如果输出是 *_0000.png → 改成 sagittal_midResize.png
-    for f in os.listdir(L3_mask_folder):
-        if f.startswith(SAGITTAL_BASE) and f.endswith("_0000.png"):
-            os.replace(os.path.join(L3_mask_folder, f),
-                       os.path.join(L3_mask_folder, SAGITTAL_CLEAN))
-
-    clean_mask_folder(L3_mask_folder, L3_cleaned_mask_folder)
-    overlay_and_save(L3_png_folder, L3_cleaned_mask_folder, L3_overlay_folder)
-
+    label = "L3"
+    base_name = os.path.splitext(os.path.basename(img_path))[0]
+    L3_mask_path = os.path.join(ver_folder, f"{base_name}_{label}_mask.png")
+    L3_overlay_path = os.path.join(ver_folder, f"{base_name}_{label}_overlay.png")
+    whole_overlay_path = os.path.join(ver_folder, f"{base_name}_whole_overlay.png")
+    vertebra_overlay_path = os.path.join(ver_folder, f"{base_name}_vertebra_overlay.png")
     return {
-        "sagittal_png": f"L3_png/{SAGITTAL_CLEAN}",
-        "l3_mask": f"L3_clean_mask/{SAGITTAL_CLEAN}",
-        "l3_overlay": f"L3_overlay/{SAGITTAL_CLEAN}",
-        "auto": True
+        "L3_mask": L3_mask_path,
+        "L3_overlay": L3_overlay_path,
+        "whole_overlay": whole_overlay_path,
+        "vertebra_overlay": vertebra_overlay_path
     }
 
 def continue_after_l3(input_folder, output_folder):
