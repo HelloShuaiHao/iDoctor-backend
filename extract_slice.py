@@ -90,7 +90,7 @@ def dicom_to_png(ds, output_path, default_center=None, default_width=None):
     2025/10/04
     使用 HU 值的 0 到 100 范围进行线性归一
     """
-    min_val = -100
+    min_val = -150
     max_val = 200
     hu_clipped = np.clip(hu, min_val, max_val)
 
@@ -176,4 +176,5 @@ def convert_selected_slices_by_z_index(dicom_folder, output_folder, selected_z_i
             # 调试输出
             ipp = getattr(ds, "ImagePositionPatient", ["?", "?", "?"])
             print(f"[导出] z_idx={z_idx} -> {out_name}  InstanceNumber={inst}  Z={ipp[2] if len(ipp)>=3 else '?'}")            
+
 
