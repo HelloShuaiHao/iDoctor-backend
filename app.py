@@ -139,11 +139,25 @@ def api_l3_detect(patient_name: str, study_date: str):
 
 @app.post("/continue_after_l3/{patient_name}/{study_date}")
 def api_continue_after_l3(patient_name: str, study_date: str):
+    print(f"[API] Received continue_after_l3 request for {patient_name}_{study_date}")
     folder = f"{patient_name}_{study_date}"
     input_folder = os.path.join(DATA_ROOT, folder, "input")
     output_folder = os.path.join(DATA_ROOT, folder, "output")
-    result = continue_after_l3(input_folder, output_folder)
-    return result
+    
+    print(f"[API] Input folder: {input_folder}")
+    print(f"[API] Output folder: {output_folder}")
+    print(f"[API] Input folder exists: {os.path.exists(input_folder)}")
+    print(f"[API] Output folder exists: {os.path.exists(output_folder)}")
+    
+    try:
+        result = continue_after_l3(input_folder, output_folder)
+        print(f"[API] Result: {result}")
+        return result
+    except Exception as e:
+        print(f"[API] Exception: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"error": f"API 调用失败: {str(e)}"}
 
 @app.get("/get_output_image/{patient_name}/{study_date}/{folder}/{filename}")
 def get_output_image(patient_name: str, study_date: str, folder: str, filename: str):
