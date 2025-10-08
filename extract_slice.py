@@ -77,18 +77,24 @@ def dicom_to_png(ds, output_path, default_center=None, default_width=None):
     hu = pixel_array * slope + intercept
 
     # Step 2: Get or define window center/width
-    wc_raw = ds.get("WindowCenter", np.mean(hu))
-    ww_raw = ds.get("WindowWidth", np.max(hu) - np.min(hu))
+    # wc_raw = ds.get("WindowCenter", np.mean(hu))
+    # ww_raw = ds.get("WindowWidth", np.max(hu) - np.min(hu))
 
-    center = default_center or float(wc_raw[0] if isinstance(wc_raw, pydicom.multival.MultiValue) else wc_raw)
-    width = default_width or float(ww_raw[0] if isinstance(ww_raw, pydicom.multival.MultiValue) else ww_raw)
+    # center = default_center or float(wc_raw[0] if isinstance(wc_raw, pydicom.multival.MultiValue) else wc_raw)
+    # width = default_width or float(ww_raw[0] if isinstance(ww_raw, pydicom.multival.MultiValue) else ww_raw)
 
     # Step 3: Clip values to window range
-    min_val = center - width / 2
-    max_val = center + width / 2
+    # min_val = center - width / 2
+    # max_val = center + width / 2
+    """
+    2025/10/04
+    使用 HU 值的 0 到 100 范围进行线性归一
+    """
+    min_val = -100
+    max_val = 200
     hu_clipped = np.clip(hu, min_val, max_val)
 
-    # Step 4: Normalize to 0�?255
+    # Step 4: Normalize to 0-255
     hu_norm = ((hu_clipped - min_val) / (max_val - min_val)) * 255.0
     hu_uint8 = np.clip(hu_norm, 0, 255).astype(np.uint8)
 
