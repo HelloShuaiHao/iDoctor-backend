@@ -153,7 +153,15 @@ lsof -ti:4200 | xargs kill -9
 # 2. 启动服务（单 worker）
 uvicorn app:app --host 0.0.0.0 --port 4200 --workers 1 --timeout-keep-alive 60
 
-# 或使用 gunicorn（推荐生产环境）
+# 每处理 10 个请求后自动重启 worker
+uvicorn app:app \
+    --host 0.0.0.0 \
+    --port 4200 \
+    --workers 1 \
+    --timeout-keep-alive 60 \
+    --limit-max-requests 10  
+
+# 使用 gunicorn（
 gunicorn app:app -w 2 -k uvicorn.workers.UvicornWorker \
     --bind 0.0.0.0:4200 \
     --timeout 600 \

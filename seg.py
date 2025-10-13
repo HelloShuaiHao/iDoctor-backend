@@ -1,58 +1,70 @@
 import os
-import glob
-import cv2
 import torch
-import numpy as np
-import imageio.v2 as imageio
-import multiprocessing as mp
+import gc
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 
 def run_nnunet_predict_and_overlay(input_dir: str, output_dir: str, model_dir: str, checkpoint: str = "checkpoint_final.pth"):
     for k in ['nnUNet_raw', 'nnUNet_preprocessed', 'nnUNet_results']:
-        os.environ[k] = os.environ.get(k, f"./{k}")
-        os.makedirs(os.environ[k], exist_ok=True)
+        if k not in os.environ:
+            os.environ[k] = os.getcwd()
 
     os.makedirs(output_dir, exist_ok=True)
 
-    predictor = nnUNetPredictor(
-        tile_step_size=0.5,
-        use_gaussian=True,
-        use_mirroring=True,
-        perform_everything_on_device=True,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-        verbose=True,
-        verbose_preprocessing=True,
-    )
-    predictor.initialize_from_trained_model_folder(
-        model_dir,
-        use_folds="all",
-        checkpoint_name=checkpoint,
-    )
+    # 推理前清理显存
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        allocated = torch.cuda.memory_allocated() / 1024**3
+        print(f"[GPU] 推理前显存: {allocated:.2f} GB")
 
-    # —— 目录模式！——
-    print(f"[DEBUG] 开始推理: {input_dir} -> {output_dir}")
-    
-    predictor.predict_from_files(
-        input_dir, 
-        output_dir,
-        save_probabilities=False,
-        num_processes_preprocessing=1,        
-        num_processes_segmentation_export=1, 
-    )
+    # 单线程模式
+    old_num_threads = os.environ.get('OMP_NUM_THREADS')
+    os.environ['OMP_NUM_THREADS'] = '1'
 
-    print(f"[DEBUG] 推理完成: {output_dir}")
-    print("🎯 Segmentation done.")
+    predictor = None
+    try:
+        predictor = nnUNetPredictor(
+            tile_step_size=0.5,
+            use_gaussian=True,
+            use_mirroring=True,
+            perform_everything_on_device=True,
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            verbose=True,
+            verbose_preprocessing=True,
+        )
+        predictor.initialize_from_trained_model_folder(
+            model_dir,
+            use_folds="all",
+            checkpoint_name=checkpoint,
+        )
 
-# # 用法示例
-# if __name__ == "__main__":
-#     try:
-#         mp.set_start_method("spawn", force=True)
-#     except RuntimeError:
-#         pass
+        print(f"[DEBUG] 开始推理: {input_dir} -> {output_dir}")
+        
+        predictor.predict_from_files(
+            input_dir, 
+            output_dir,
+            save_probabilities=False,
+            num_processes_preprocessing=1,
+            num_processes_segmentation_export=1,
+        )
 
-#     run_nnunet_predict_and_overlay(
-#         input_dir="Axisal_1504425",
-#         output_dir="conall2_predictions",
-#         model_dir="nnUNet_results/Dataset001_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d",
-#         checkpoint_name="checkpoint_final.pth"
-#     )
+        print(f"[DEBUG] 推理完成: {output_dir}")
+
+    finally:
+        # 强制释放资源
+        if predictor is not None:
+            del predictor
+        
+        gc.collect()
+        
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            print(f"[GPU] 推理后显存: {allocated:.2f} GB")
+        
+        # 恢复环境变量
+        if old_num_threads:
+            os.environ['OMP_NUM_THREADS'] = old_num_threads
+        else:
+            os.environ.pop('OMP_NUM_THREADS', None)
