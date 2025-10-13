@@ -151,7 +151,7 @@ pkill -9 -f uvicorn
 lsof -ti:4200 | xargs kill -9
 
 # 2. 启动服务（单 worker）
-uvicorn app:app --host 0.0.0.0 --port 4200 --workers 1 --timeout-keep-alive 30
+uvicorn app:app --host 0.0.0.0 --port 4200 --workers 1 --timeout-keep-alive 60
 
 # 或使用 gunicorn（推荐生产环境）
 gunicorn app:app -w 2 -k uvicorn.workers.UvicornWorker \
@@ -160,16 +160,6 @@ gunicorn app:app -w 2 -k uvicorn.workers.UvicornWorker \
     --max-requests 100 \
     --max-requests-jitter 10
 ```
-
----
-
-## ✅ 优势
-
-1. **不会超时**: HTTP 请求立即返回，不会因为推理耗时长而超时
-2. **不会卡死**: 任务在后台执行，即使卡住也不影响其他请求
-3. **可监控**: 前端可实时查询进度和状态
-4. **可重试**: 任务失败后可以查看错误信息
-5. **防重复**: 自动检测重复提交
 
 ---
 
