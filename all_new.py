@@ -13,6 +13,8 @@ from extract_slice import convert_selected_slices_by_z_index
 
 from seg import run_nnunet_predict_and_overlay
 from compute import process_all
+from recon import reconstruct_ct_volume, convert_binary_to_255
+
 
 SAGITTAL_BASE = "sagittal_midResize"
 SAGITTAL_INPUT = SAGITTAL_BASE + "_0000.png"   # nnUNet 输入文件
@@ -45,19 +47,23 @@ def main(input_folder, output_folder):
     ver_folder = os.path.join(output_folder, "verseg")
     slice_folder = os.path.join(output_folder, "Axisal")
     full_mask_folder = os.path.join(output_folder, "full_mask")
-    clean_full_mask_folder = os.path.join(output_folder, "clean")
+    full_mask255_folder = os.path.join(output_folder, "full_255mask")
+    full_recon_folder = os.path.join(output_folder, "full_mask_recon")
+    # clean_full_mask_folder = os.path.join(output_folder, "clean")
     full_overlay_folder = os.path.join(output_folder, "full_overlay")
     major_mask_folder = os.path.join(output_folder, "major_mask")
+    major_mask255_folder = os.path.join(output_folder, "major_255mask")
+    major_recon_folder = os.path.join(output_folder, "major_mask_recon")
     major_overlay_folder = os.path.join(output_folder, "major_overlay")
 
 
     # 模型路径
     whole_weights = "outputwhole/model_final.pth"
     vertebra_weights = "outputnew/model_final.pth"
-    full_model_dir="nnUNet_results/Dataset001_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
+    full_model_dir="nnUNet_results/Dataset004_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
     full_checkpoint="checkpoint_final.pth"
 
-    major_model_dir="nnUNet_results/Dataset002_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
+    major_model_dir="nnUNet_results/Dataset005_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"
     major_checkpoint="checkpoint_final.pth"
 
     # 1. 找中间视角的侧视图
@@ -69,6 +75,7 @@ def main(input_folder, output_folder):
 
     volume = sitk.GetArrayFromImage(image)  # [Z, Y, X]
     spacing = image.GetSpacing()
+    print("spacing:", spacing)
 
     spacing_z = spacing[2]  # height direction
     spacing_y = spacing[1]  # width direction
@@ -138,7 +145,19 @@ def main(input_folder, output_folder):
             os.rename(old_path, new_path)
             print(f"Renamed: {filename} → {name_wo_ext}.png")
 
+    # 7 三维重建及体积计算
+    # 需要处理major和full两个mask，转换成0/255的二值图像
+    convert_binary_to_255(major_mask_folder, major_mask255_folder)
+    convert_binary_to_255(full_mask_folder, full_mask255_folder)
+
+    # 体积是分开部分的体积
+    major_volume_mm3 = reconstruct_ct_volume(major_mask255_folder, major_recon_folder, spacing, visualize=False)
+    full_volume_mm3 = reconstruct_ct_volume(full_mask255_folder, full_recon_folder, spacing, visualize=False)
+
+    combo_volume_mm3 = major_volume_mm3 + full_volume_mm3
+
     # 6 全肌肉 + 腰大肌一起计算
+    # 改：加上输入两部分的体积，然后结合密度的结果计算质量，并将体积、质量写入csv
     process_all(
         psoas_mask_dir=major_mask_folder,
         full_mask_dir=full_mask_folder,
@@ -146,14 +165,16 @@ def main(input_folder, output_folder):
         dicom_dir=dicom_folder,
         overlay_psoas_dir=major_overlay_folder,
         overlay_combo_dir=full_overlay_folder,
-        clean_full_mask_dir=clean_full_mask_folder,
-        pattern="*.png",
-        area_thresh=1000,
-        area_ratio_thresh=0.05,
-        morph_ksize=3,
-        morph_iters=1,
-        overlay_alpha=0.5
+        major_volume_mm3=major_volume_mm3,
+        combo_volume_mm3=combo_volume_mm3
     )
+
+
+
+
+
+
+
 
 def l3_detect(input_folder, output_folder):
     L3_png_folder = os.path.join(output_folder, "L3_png")
@@ -319,4 +340,4 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
 
-    main()
+    main("16285041", "recon_16285041")
