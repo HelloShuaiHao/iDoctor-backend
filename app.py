@@ -1,10 +1,11 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 
 import shutil, os
 import zipfile
 import zipfile
 import os
+import traceback
 from all_new import main 
 from all_new import l3_detect, continue_after_l3, generate_sagittal, SAGITTAL_CLEAN
 from fastapi.responses import FileResponse
@@ -14,6 +15,9 @@ from compute import compute_manual_middle_statistics
 
 
 app = FastAPI()
+
+# 全局任务状态字典
+task_status = {}
 # 允许的前端来源
 origins = [
     "http://localhost:7500",
@@ -63,20 +67,70 @@ async def upload_dicom_zip(
     return {"folder": folder_name, "message": "上传并解压成功"}
 
 @app.post("/process/{patient_name}/{study_date}")
-def process_case(patient_name: str, study_date: str):
+async def process_case(
+    patient_name: str, 
+    study_date: str,
+    background_tasks: BackgroundTasks
+):
+    task_id = f"main_{patient_name}_{study_date}"
+    
+    # 检查任务是否已在处理中
+    if task_id in task_status and task_status[task_id]["status"] == "processing":
+        return {
+            "status": "processing",
+            "task_id": task_id,
+            "message": "任务正在处理中，请勿重复提交"
+        }
+    
+    # 初始化任务状态
+    task_status[task_id] = {
+        "status": "processing",
+        "progress": 0,
+        "message": "任务已提交"
+    }
+    
     folder_name = f"{patient_name}_{study_date}"
     patient_root = os.path.join(DATA_ROOT, folder_name)
     input_folder = os.path.join(patient_root, "input")
     output_folder = os.path.join(patient_root, "output")
     os.makedirs(output_folder, exist_ok=True)
 
-    main(input_folder, output_folder)
-
+    print(f"[API] 提交全流程后台任务: {task_id}")
+    
+    # 提交后台任务
+    background_tasks.add_task(_run_main_process, task_id, input_folder, output_folder)
+    
     return {
-        "status": "success",
-        "message": "处理完成",
-        "output_dir": output_folder
+        "status": "submitted",
+        "task_id": task_id,
+        "message": "全流程任务已提交到后台处理，请轮询 /task_status/{task_id} 查看进度"
     }
+
+def _run_main_process(task_id: str, input_folder: str, output_folder: str):
+    """后台任务：执行 main 全流程"""
+    try:
+        print(f"[后台任务 {task_id}] 开始全流程处理...")
+        task_status[task_id]["progress"] = 10
+        task_status[task_id]["message"] = "正在处理..."
+        
+        main(input_folder, output_folder)
+        
+        print(f"[后台任务 {task_id}] 全流程处理完成")
+        task_status[task_id] = {
+            "status": "completed",
+            "progress": 100,
+            "message": "全流程处理完成",
+            "output_dir": output_folder
+        }
+    except Exception as e:
+        print(f"[后台任务 {task_id}] 处理失败: {e}")
+        traceback.print_exc()
+        task_status[task_id] = {
+            "status": "failed",
+            "progress": 0,
+            "message": f"处理失败: {str(e)}",
+            "error": str(e)
+        }
 
 # 返回所有文件夹的 病人-日期 列表
 @app.get("/list_patients")
@@ -138,26 +192,88 @@ def api_l3_detect(patient_name: str, study_date: str):
     return result
 
 @app.post("/continue_after_l3/{patient_name}/{study_date}")
-def api_continue_after_l3(patient_name: str, study_date: str):
-    print(f"[API] Received continue_after_l3 request for {patient_name}_{study_date}")
+async def api_continue_after_l3(
+    patient_name: str, 
+    study_date: str,
+    background_tasks: BackgroundTasks
+):
+    task_id = f"{patient_name}_{study_date}"
+    
+    # 检查任务是否已在处理中
+    if task_id in task_status and task_status[task_id]["status"] == "processing":
+        return {
+            "status": "processing",
+            "task_id": task_id,
+            "message": "任务正在处理中，请勿重复提交"
+        }
+    
+    # 初始化任务状态
+    task_status[task_id] = {
+        "status": "processing",
+        "progress": 0,
+        "message": "任务已提交"
+    }
+    
     folder = f"{patient_name}_{study_date}"
     input_folder = os.path.join(DATA_ROOT, folder, "input")
     output_folder = os.path.join(DATA_ROOT, folder, "output")
     
+    print(f"[API] 提交后台任务: {task_id}")
     print(f"[API] Input folder: {input_folder}")
     print(f"[API] Output folder: {output_folder}")
-    print(f"[API] Input folder exists: {os.path.exists(input_folder)}")
-    print(f"[API] Output folder exists: {os.path.exists(output_folder)}")
     
+    # 提交后台任务
+    background_tasks.add_task(_run_continue_after_l3, task_id, input_folder, output_folder)
+    
+    return {
+        "status": "submitted",
+        "task_id": task_id,
+        "message": "任务已提交到后台处理，请轮询 /task_status/{task_id} 查看进度"
+    }
+
+def _run_continue_after_l3(task_id: str, input_folder: str, output_folder: str):
+    """后台任务：执行 continue_after_l3"""
     try:
+        print(f"[后台任务 {task_id}] 开始处理...")
+        task_status[task_id]["progress"] = 10
+        task_status[task_id]["message"] = "正在读取 DICOM 和 L3 mask..."
+        
         result = continue_after_l3(input_folder, output_folder)
-        print(f"[API] Result: {result}")
-        return result
+        
+        print(f"[后台任务 {task_id}] 处理完成")
+        task_status[task_id] = {
+            "status": "completed",
+            "progress": 100,
+            "message": "处理完成",
+            "result": result
+        }
     except Exception as e:
-        print(f"[API] Exception: {str(e)}")
-        import traceback
+        print(f"[后台任务 {task_id}] 处理失败: {e}")
         traceback.print_exc()
-        return {"error": f"API 调用失败: {str(e)}"}
+        task_status[task_id] = {
+            "status": "failed",
+            "progress": 0,
+            "message": f"处理失败: {str(e)}",
+            "error": str(e)
+        }
+
+@app.get("/task_status/{task_id}")
+def get_task_status(task_id: str):
+    """查询任务状态"""
+    if task_id not in task_status:
+        return {
+            "status": "not_found",
+            "message": "任务不存在"
+        }
+    return task_status[task_id]
+
+@app.get("/list_tasks")
+def list_tasks():
+    """列出所有任务及其状态"""
+    return {
+        "tasks": task_status,
+        "count": len(task_status)
+    }
 
 @app.get("/get_output_image/{patient_name}/{study_date}/{folder}/{filename}")
 def get_output_image(patient_name: str, study_date: str, folder: str, filename: str):

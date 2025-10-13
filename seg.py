@@ -30,13 +30,17 @@ def run_nnunet_predict_and_overlay(input_dir: str, output_dir: str, model_dir: s
     )
 
     # —— 目录模式！——
+    print(f"[DEBUG] 开始推理: {input_dir} -> {output_dir}")
+    
     predictor.predict_from_files(
         input_dir, 
         output_dir,
         save_probabilities=False,
-        num_processes_preprocessing=1,
+        num_processes_preprocessing=0,  # ✅ 禁用多进程，避免死锁
+        num_processes_segmentation_export=0,  # ✅ 禁用导出多进程
     )
 
+    print(f"[DEBUG] 推理完成: {output_dir}")
     print("🎯 Segmentation done.")
 
 # # 用法示例
