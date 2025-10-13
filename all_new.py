@@ -237,9 +237,11 @@ def continue_after_l3(input_folder, output_folder):
     print("DEBUG: restored mask shape:", mask.shape)
 
     # 横断面提取
+    print("[LOG] ========== 开始提取横断面切片 ==========")
     axial_slices_numbers = extract_axial_slices_from_sagittal_mask(volume, mask, x_mid, save_images=False)
     print(f"[DEBUG] axial z indices (continue) count={len(axial_slices_numbers)} "
           f"first/last={axial_slices_numbers[:2]} ... {axial_slices_numbers[-2:]}")
+    print("[LOG] ========== 横断面切片提取完成 ==========")
     convert_selected_slices_by_z_index(
         dicom_folder=input_folder,
         output_folder=slice_folder,
@@ -260,10 +262,19 @@ def continue_after_l3(input_folder, output_folder):
     major_checkpoint="checkpoint_final.pth"
 
     # 只保留*_0000.png 作为 nnUNet 输入
+    print("[LOG] ========== 清理 nnUNet 输入文件夹 ==========")
     clean_nnunet_input_folder(slice_folder)
+    print("[LOG] ========== 清理完成 ==========")
 
+    print("[LOG] ========== 开始腰大肌分割 (Dataset002) ==========")
+    print(f"[LOG] input_dir={slice_folder}, output_dir={major_mask_folder}")
     run_nnunet_predict_and_overlay(slice_folder, major_mask_folder, major_model_dir, major_checkpoint)
+    print("[LOG] ========== 腰大肌分割完成 ==========")
+    
+    print("[LOG] ========== 开始全肌肉分割 (Dataset001) ==========")
+    print(f"[LOG] input_dir={slice_folder}, output_dir={full_mask_folder}")
     run_nnunet_predict_and_overlay(slice_folder, full_mask_folder, full_model_dir, full_checkpoint)
+    print("[LOG] ========== 全肌肉分割完成 ==========")
 
     for filename in os.listdir(slice_folder):
         if filename.endswith("_0000.png"):
