@@ -101,7 +101,7 @@ def run_nnunet_predict_and_overlay(input_dir: str,
         predictor.initialize_from_trained_model_folder(
             model_dir,
             # use_folds='all',
-            use_folds=(0,),  # 改为 (0,) 让它在根目录找权重,而不是 fold_all/            
+            use_folds=None,  # 设为 None 让它直接在根目录找权重
             checkpoint_name=checkpoint,
         )
         write_log(log_root, "[nnUNet] model_initialized begin_predict")
