@@ -105,19 +105,52 @@ def run_nnunet_predict_and_overlay(input_dir: str,
         )
         write_log(log_root, "[nnUNet] model_initialized begin_predict")
         write_log(log_root, f"[nnUNet] PREDICT_CALL input_type={type(input_dir)} is_dir={os.path.isdir(input_dir)}")
+        # 1. 确保权重存在, 若根目录没有则尝试从 fold_all 软链接常见文件名
+        weight_root = os.path.join(model_dir, checkpoint)
+        if not os.path.isfile(weight_root):
+            candidate_names = [checkpoint, 'model_final.pth', 'checkpoint_best.pth']
+            for cn in candidate_names:
+                cand = os.path.join(model_dir, 'fold_all', cn)
+                if os.path.isfile(cand):
+                    try:
+                        os.symlink(cand, weight_root)
+                        write_log(log_root, f"[nnUNet] SYMLINK {cand} -> {weight_root}")
+                    except FileExistsError:
+                        pass
+                    break
+        if not os.path.isfile(weight_root):
+            raise RuntimeError(f"缺少权重文件: {weight_root}. 请将 fold_all 内的权重复制或软链接到模型根目录")
+
+        # 2. 构造 list-of-lists cases (单模态) 而不是传目录字符串
+        cases = [[os.path.join(input_dir, f)] for f in sorted(os.listdir(input_dir)) if f.endswith('_0000.png')]
+        write_log(log_root, f"[nnUNet] CASES_BUILT count={len(cases)} first={[os.path.basename(c[0]) for c in cases[:5]]}")
+        if not cases:
+            raise RuntimeError("未找到 *_0000.png 作为 nnUNet 输入")
+
+        # 3. 推理 (禁用并行导出防止空任务阻塞小样本) 
+        infer_t0 = time.time()
         predictor.predict_from_files(
-            input_dir,
+            cases,
             output_dir,
             save_probabilities=False,
             num_processes_preprocessing=1,
-            num_processes_segmentation_export=1,
+            num_processes_segmentation_export=0,
         )
+        infer_t1 = time.time()
+
+        # 4. 等待最多 60s 收集 nii (通常即刻出现)
+        deadline = time.time() + 60
+        nii_files = []
+        while time.time() < deadline:
+            nii_files = [f for f in os.listdir(output_dir) if f.endswith('.nii.gz')]
+            if len(nii_files) >= len(cases):
+                break
+            time.sleep(1)
         dur = time.time() - start_time
         out_files = sorted(os.listdir(output_dir))
-        nii_files = [f for f in out_files if f.endswith('.nii.gz')]
-        write_log(log_root, f"[nnUNet] DONE duration={dur:.2f}s out_total={len(out_files)} nii={len(nii_files)} sample={out_files[:10]}")
+        write_log(log_root, f"[nnUNet] DONE duration={dur:.2f}s infer_time={infer_t1-infer_t0:.2f}s out_total={len(out_files)} nii={len(nii_files)} sample={out_files[:12]}")
         if len(nii_files) == 0:
-            write_log(log_root, "[nnUNet] WARN no_nii_outputs")
+            raise RuntimeError("推理完成但未生成 *.nii.gz (检查权重/输入尺寸/模型配置)")
     except Exception as e:
         write_log(log_root, f"[nnUNet] EXCEPTION {e}")
         traceback.print_exc()
