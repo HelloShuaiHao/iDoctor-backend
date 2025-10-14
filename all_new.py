@@ -4,6 +4,8 @@ import os
 import numpy as np
 import torch
 import multiprocessing as mp
+from datetime import datetime
+from pipeline_logging import write_log, log_section
 from sagit_save import resize_and_save_sagittal_as_dicom, dicom_to_balanced_png, overlay_and_save, clean_mask_folder
 from verseg import process_spine_and_vertebrae
 from extract_slice import load_mask, extract_axial_slices_from_sagittal_mask, reversedNumber, convert_selected_slices
@@ -20,6 +22,7 @@ SAGITTAL_CLEAN = SAGITTAL_BASE + ".png"        # 前端&手动标注&最终mask�
 
 
 def main(input_folder, output_folder):
+    log_section(output_folder, f"MAIN START input={input_folder}")
     # 输出目录
     # dicom_folder = "1504425"
     # # L3相关
@@ -69,6 +72,7 @@ def main(input_folder, output_folder):
 
     volume = sitk.GetArrayFromImage(image)  # [Z, Y, X]
     spacing = image.GetSpacing()
+    write_log(output_folder, f"DICOM loaded count={len(dicom_names)} volume_shape={volume.shape} spacing={spacing}")
 
     spacing_z = spacing[2]  # height direction
     spacing_y = spacing[1]  # width direction
@@ -81,10 +85,12 @@ def main(input_folder, output_folder):
 
     # DICOM:Save with resized height and updated metadata
     dcm_path = resize_and_save_sagittal_as_dicom(sagittal_slice, spacing, dicom_names[len(dicom_names)//2])
+    write_log(output_folder, f"Sagittal DICOM saved path={dcm_path} slice_shape={sagittal_slice.shape}")
 
     # Convert to png
     # png_path = dicom_to_balanced_png(dcm_path, f"output7_{dicom_folder}.png", scale_ratio)
-    png_path = dicom_to_balanced_png(dcm_path, L3_png_folder, scale_ratio)
+    png_inputs = dicom_to_balanced_png(dcm_path, L3_png_folder, scale_ratio)
+    write_log(output_folder, f"Sagittal PNG generated dir={L3_png_folder} files={os.listdir(L3_png_folder)}")
 
     # 2. 推理L3脊柱
     # return mask和overlay的地址
@@ -99,17 +105,23 @@ def main(input_folder, output_folder):
     输出： L3的mask_path, 整个脊椎的overlay_path，分割每个锥体的overlay_path
     """
     img_path = os.path.join(L3_png_folder, SAGITTAL_INPUT)
+    write_log(output_folder, "Begin vertebra detection")
     results = process_spine_and_vertebrae(img_path, whole_weights, vertebra_weights, ver_folder)
+    write_log(output_folder, f"Vertebra detection done keys={list(results.keys()) if results else None}")
     L3_mask_path = results["L3_mask"]
-    print("L3_mask_path:", L3_mask_path)
+    write_log(output_folder, f"L3_mask_path={L3_mask_path} exists={os.path.exists(L3_mask_path)}")
     mask = load_mask(L3_mask_path)
     restored_mask = cv2.resize(mask, (orig_width, orig_height), interpolation=cv2.INTER_NEAREST)
+    write_log(output_folder, f"L3 mask loaded shape={mask.shape} resized_shape={restored_mask.shape} foreground_pixels={int(mask.sum())}")
 
     # 3. 找对应的横切图
     # Extract corresponding axial slices
     axial_slices_numbers = extract_axial_slices_from_sagittal_mask(volume, restored_mask, x_mid, save_images=False)
-    print(f"[DEBUG] axial z indices (main) count={len(axial_slices_numbers)} "
-          f"first/last={axial_slices_numbers[:2]} ... {axial_slices_numbers[-2:]}")
+    if axial_slices_numbers:
+        preview = axial_slices_numbers[:2] + axial_slices_numbers[-2:]
+    else:
+        preview = []
+    write_log(output_folder, f"Axial indices count={len(axial_slices_numbers)} preview={preview}")
     convert_selected_slices_by_z_index(
         dicom_folder=dicom_folder,
         output_folder=slice_folder,
@@ -126,19 +138,27 @@ def main(input_folder, output_folder):
     )
 
     # 4. 腰大肌的识别
+    write_log(output_folder, f"Run psoas nnUNet input_dir={slice_folder} output={major_mask_folder}")
     run_nnunet_predict_and_overlay(slice_folder, major_mask_folder, major_model_dir, major_checkpoint)
+    write_log(output_folder, f"Psoas nnUNet done outputs={len(os.listdir(major_mask_folder))}")
     # 5. 全肌肉的识别
+    write_log(output_folder, f"Run full nnUNet input_dir={slice_folder} output={full_mask_folder}")
     run_nnunet_predict_and_overlay(slice_folder, full_mask_folder, full_model_dir, full_checkpoint)
+    write_log(output_folder, f"Full nnUNet done outputs={len(os.listdir(full_mask_folder))}")
 
+    before_rename = [f for f in os.listdir(slice_folder) if f.endswith('_0000.png')]
+    write_log(output_folder, f"Rename phase start count_0000={len(before_rename)}")
     for filename in os.listdir(slice_folder):
         if filename.endswith("_0000.png"):
             name_wo_ext = filename[:-9]
             old_path = os.path.join(slice_folder, filename)
             new_path = os.path.join(slice_folder, name_wo_ext + ".png")
             os.rename(old_path, new_path)
-            print(f"Renamed: {filename} → {name_wo_ext}.png")
+    after_rename = [f for f in os.listdir(slice_folder) if f.endswith('.png')]
+    write_log(output_folder, f"Rename phase done total_png={len(after_rename)}")
 
     # 6 全肌肉 + 腰大肌一起计算
+    write_log(output_folder, "Begin process_all metrics computation")
     process_all(
         psoas_mask_dir=major_mask_folder,
         full_mask_dir=full_mask_folder,
@@ -154,8 +174,11 @@ def main(input_folder, output_folder):
         morph_iters=1,
         overlay_alpha=0.5
     )
+    write_log(output_folder, "process_all done")
+    log_section(output_folder, "MAIN END")
 
 def l3_detect(input_folder, output_folder):
+    write_log(output_folder, f"L3_DETECT START input={input_folder}")
     L3_png_folder = os.path.join(output_folder, "L3_png")
     ver_folder = os.path.join(output_folder, "verseg")
     L3_mask_folder = os.path.join(output_folder, "L3_mask")
@@ -172,7 +195,9 @@ def l3_detect(input_folder, output_folder):
     vertebra_weights = "outputnew/model_final.pth"
 
     img_path = os.path.join(L3_png_folder, SAGITTAL_INPUT)
+    write_log(output_folder, "L3_DETECT vertebra_infer start")
     results = process_spine_and_vertebrae(img_path, whole_weights, vertebra_weights, ver_folder)
+    write_log(output_folder, f"L3_DETECT vertebra_infer done keys={list(results.keys()) if results else None}")
     
     # 复制结果到原有目录结构
     import shutil
@@ -183,17 +208,21 @@ def l3_detect(input_folder, output_folder):
     dst_mask = os.path.join(L3_mask_folder, SAGITTAL_CLEAN)
     if os.path.exists(src_mask):
         shutil.copy2(src_mask, dst_mask)
+        write_log(output_folder, f"L3_DETECT copy L3 mask -> {dst_mask}")
     
     src_overlay = os.path.join(ver_folder, f"{base_name}_L3_overlay.png") 
     dst_overlay = os.path.join(L3_overlay_folder, SAGITTAL_CLEAN)
     if os.path.exists(src_overlay):
         shutil.copy2(src_overlay, dst_overlay)
+        write_log(output_folder, f"L3_DETECT copy L3 overlay -> {dst_overlay}")
     
     # 清理和生成最终 overlay
     from sagit_save import clean_mask_folder, overlay_and_save
     clean_mask_folder(L3_mask_folder, L3_clean_mask_folder)
     overlay_and_save(L3_png_folder, L3_clean_mask_folder, L3_overlay_folder)
+    write_log(output_folder, "L3_DETECT cleaned & overlay generated")
     
+    write_log(output_folder, "L3_DETECT END")
     return {
         "sagittal_png": f"L3_png/{SAGITTAL_CLEAN}",
         "l3_mask": f"L3_clean_mask/{SAGITTAL_CLEAN}",
@@ -202,10 +231,12 @@ def l3_detect(input_folder, output_folder):
     }
 
 def continue_after_l3(input_folder, output_folder):
+    write_log(output_folder, f"CONT_AFTER_L3 START input={input_folder}")
     # 只做横断面提取和后续分割
     L3_cleaned_mask_folder = os.path.join(output_folder, "L3_clean_mask")
     mask_path = os.path.join(L3_cleaned_mask_folder, SAGITTAL_CLEAN)
     if not os.path.exists(mask_path):
+        write_log(output_folder, "CONT_AFTER_L3 MISSING_L3_MASK abort")
         return {"error": "缺少 L3_clean_mask/sagittal_midResize.png，请先自动或手动上传"}
     
     slice_folder = os.path.join(output_folder, "Axisal")
@@ -234,14 +265,16 @@ def continue_after_l3(input_folder, output_folder):
     image_path = os.path.join(L3_cleaned_mask_folder, "sagittal_midResize.png")
     mask = load_mask(image_path)
     mask = cv2.resize(mask, (volume.shape[1], volume.shape[0]), interpolation=cv2.INTER_NEAREST)
-    print("DEBUG: restored mask shape:", mask.shape)
+    write_log(output_folder, f"CONT_AFTER_L3 restored_mask shape={mask.shape}")
 
     # 横断面提取
-    print("[LOG] ========== 开始提取横断面切片 ==========")
+    write_log(output_folder, "CONT_AFTER_L3 axial extraction start")
     axial_slices_numbers = extract_axial_slices_from_sagittal_mask(volume, mask, x_mid, save_images=False)
-    print(f"[DEBUG] axial z indices (continue) count={len(axial_slices_numbers)} "
-          f"first/last={axial_slices_numbers[:2]} ... {axial_slices_numbers[-2:]}")
-    print("[LOG] ========== 横断面切片提取完成 ==========")
+    if axial_slices_numbers:
+        preview = axial_slices_numbers[:2] + axial_slices_numbers[-2:]
+    else:
+        preview = []
+    write_log(output_folder, f"CONT_AFTER_L3 axial count={len(axial_slices_numbers)} preview={preview}")
     convert_selected_slices_by_z_index(
         dicom_folder=input_folder,
         output_folder=slice_folder,
@@ -262,19 +295,16 @@ def continue_after_l3(input_folder, output_folder):
     major_checkpoint="checkpoint_final.pth"
 
     # 只保留*_0000.png 作为 nnUNet 输入
-    print("[LOG] ========== 清理 nnUNet 输入文件夹 ==========")
+    write_log(output_folder, "CONT_AFTER_L3 clean nnunet inputs")
     clean_nnunet_input_folder(slice_folder)
-    print("[LOG] ========== 清理完成 ==========")
 
-    print("[LOG] ========== 开始腰大肌分割 (Dataset002) ==========")
-    print(f"[LOG] input_dir={slice_folder}, output_dir={major_mask_folder}")
+    write_log(output_folder, "CONT_AFTER_L3 psoas nnunet start")
     run_nnunet_predict_and_overlay(slice_folder, major_mask_folder, major_model_dir, major_checkpoint)
-    print("[LOG] ========== 腰大肌分割完成 ==========")
+    write_log(output_folder, f"CONT_AFTER_L3 psoas nnunet done count={len(os.listdir(major_mask_folder))}")
     
-    print("[LOG] ========== 开始全肌肉分割 (Dataset001) ==========")
-    print(f"[LOG] input_dir={slice_folder}, output_dir={full_mask_folder}")
+    write_log(output_folder, "CONT_AFTER_L3 full nnunet start")
     run_nnunet_predict_and_overlay(slice_folder, full_mask_folder, full_model_dir, full_checkpoint)
-    print("[LOG] ========== 全肌肉分割完成 ==========")
+    write_log(output_folder, f"CONT_AFTER_L3 full nnunet done count={len(os.listdir(full_mask_folder))}")
 
     for filename in os.listdir(slice_folder):
         if filename.endswith("_0000.png"):
@@ -283,6 +313,7 @@ def continue_after_l3(input_folder, output_folder):
             new_path = os.path.join(slice_folder, name_wo_ext + ".png")
             os.rename(old_path, new_path)
 
+    write_log(output_folder, "CONT_AFTER_L3 metrics start")
     process_all(
         psoas_mask_dir=major_mask_folder,
         full_mask_dir=full_mask_folder,
@@ -298,6 +329,8 @@ def continue_after_l3(input_folder, output_folder):
         morph_iters=1,
         overlay_alpha=0.5
     )
+    write_log(output_folder, "CONT_AFTER_L3 metrics done")
+    write_log(output_folder, "CONT_AFTER_L3 END")
     return {"status": "ok", "message": "后续流程已完成"}
 
 def generate_sagittal(input_folder, output_folder, force=False):

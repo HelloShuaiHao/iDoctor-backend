@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import os
+from pipeline_logging import write_log
 from detectron2.config import get_cfg
 from detectron2.engine import DefaultPredictor
 from detectron2.utils.visualizer import Visualizer
@@ -46,6 +47,8 @@ def process_spine_and_vertebrae(
         raise FileNotFoundError(f"未找到图像: {img_path}")
 
     os.makedirs(output_dir, exist_ok=True)
+    log_root = os.path.dirname(output_dir) if os.path.dirname(output_dir) else output_dir
+    write_log(log_root, f"[Vertebra] START img={img_path} whole_weights={whole_weights} vertebra_weights={vertebra_weights}")
 
     config_file="COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
     score_thresh=0.5
@@ -60,6 +63,7 @@ def process_spine_and_vertebrae(
     instances = whole_outputs["instances"].to("cpu")
 
     if len(instances) == 0:
+        write_log(log_root, "[Vertebra] NO_SPINE_DETECTED")
         raise ValueError("未检测到脊柱！")
 
     # 假设只有一个脊柱实例
@@ -71,6 +75,7 @@ def process_spine_and_vertebrae(
     # === 第二步：检测椎体 ===
     vertebra_outputs = vertebra_predictor(spine_crop)
     vertebra_instances = vertebra_outputs["instances"].to("cpu")
+    write_log(log_root, f"[Vertebra] vertebra_detected={len(vertebra_instances)}")
 
     # === 可视化结果 ===
     v1 = Visualizer(im[:, :, ::-1], MetadataCatalog.get("wholespine_train"), scale=1.2)
@@ -106,13 +111,13 @@ def process_spine_and_vertebrae(
 
         cv2.imwrite(os.path.join(output_dir, f"{base_name}_{label}_mask.png"), mask_img)
         cv2.imwrite(os.path.join(output_dir, f"{base_name}_{label}_overlay.png"), overlay_img)
+    write_log(log_root, f"[Vertebra] saved_labels={[f'L{i+1}' for i in range(len(sorted_vertebrae))]}")
 
     # === Step 5: 保存整体 overlay 图 ===
     cv2.imwrite(os.path.join(output_dir, f"{base_name}_whole_overlay.png"), whole_overlay)
     cv2.imwrite(os.path.join(output_dir, f"{base_name}_vertebra_overlay.png"), vertebra_overlay)
 
-    print(f"✅ 已完成处理: {img_path}")
-    print(f"结果保存在 {output_dir}/")
+    write_log(log_root, f"[Vertebra] overlays_saved output_dir={output_dir}")
     
     # === ✅ 仅提取并返回 L3 相关结果（返回路径，不再重复保存） ===
     if len(sorted_vertebrae) >= 3:
@@ -126,6 +131,7 @@ def process_spine_and_vertebrae(
         vertebra_overlay_path = os.path.join(output_dir, f"{base_name}_vertebra_overlay.png")
 
         # ✅ 直接返回路径（这些文件前面都已经保存过）
+        write_log(log_root, "[Vertebra] L3_AVAILABLE")
         return {
             "L3_mask": L3_mask_path,
             "L3_overlay": L3_overlay_path,
@@ -134,5 +140,5 @@ def process_spine_and_vertebrae(
         }
 
     else:
-        print("⚠️ 检测到的椎体数量不足，无法提取 L3。")
+        write_log(log_root, "[Vertebra] L3_NOT_AVAILABLE vertebrae_count=" + str(len(sorted_vertebrae)))
         return None
