@@ -1,7 +1,7 @@
-from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-import shutil, os
+import shutil, os, time, threading
 import zipfile
 import zipfile
 import os
@@ -16,8 +16,18 @@ from compute import compute_manual_middle_statistics
 
 app = FastAPI()
 
-# 全局任务状态字典
+# 全局任务状态字典 (后台计算)
 task_status = {}
+
+# 上传进度状态: {upload_id: {status, received, total, percent, message, folder, filename, started_at}}
+upload_status = {}
+
+# 每个病例(patient_date)的互斥锁，防止并发上传/处理覆盖
+_patient_locks = {}
+def _get_patient_lock(key: str):
+    return _patient_locks.setdefault(key, threading.Lock())
+
+CHUNK_SIZE = 1024 * 512  # 512KB chunk
 # 允许的前端来源
 origins = [
     "http://localhost:7500",
@@ -39,32 +49,124 @@ app.add_middleware(
 
 DATA_ROOT = "data"
 
-# 测试命令 curl -F "patient_name=张三" -F "study_date=20230830" -F "file=@test.zip" http://localhost:8000/upload_dicom_zip
+############################## 上传相关接口 ##############################
+@app.get("/upload_status/{upload_id}")
+def get_upload_status(upload_id: str):
+    """查询上传进度/状态"""
+    return upload_status.get(upload_id, {"status": "not_found"})
+
 @app.post("/upload_dicom_zip")
 async def upload_dicom_zip(
+    request: Request,
     patient_name: str = Form(...),
     study_date: str = Form(...),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    file_size: int = Form(None)
 ):
+    """流式安全上传 + 进度 + 客户端断开清理 + 原子替换 input 目录。
+
+    返回: {status, upload_id, folder, message}
+    进度查询: GET /upload_status/{upload_id}
+    状态说明:
+      receiving -> unzip -> done / aborted / error
+    """
     folder_name = f"{patient_name}_{study_date}"
     patient_root = os.path.join(DATA_ROOT, folder_name)
-    input_folder = os.path.join(patient_root, "input")
-    os.makedirs(input_folder, exist_ok=True)
-    zip_path = os.path.join(patient_root, file.filename)
-    with open(zip_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    # 解压时将所有文件直接放到 input_folder
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        for member in zip_ref.namelist():
-            filename = os.path.basename(member)
-            if not filename:
-                continue  # 跳过文件夹
-            source = zip_ref.open(member)
-            target = open(os.path.join(input_folder, filename), "wb")
-            with source, target:
-                shutil.copyfileobj(source, target)
-    os.remove(zip_path)  # 解压后删除 zip 文件                
-    return {"folder": folder_name, "message": "上传并解压成功"}
+    os.makedirs(patient_root, exist_ok=True)
+
+    lock = _get_patient_lock(folder_name)
+    if not lock.acquire(blocking=False):
+        return {"status": "blocked", "message": "该病例正在占用中, 稍后再试"}
+
+    upload_id = f"{folder_name}_{int(time.time())}"
+    upload_status[upload_id] = {
+        "status": "receiving",
+        "received": 0,
+        "total": file_size,
+        "percent": 0.0,
+        "message": "正在接收",
+        "folder": folder_name,
+        "filename": file.filename,
+        "started_at": time.time()
+    }
+
+    tmp_zip_path = os.path.join(patient_root, file.filename + ".part")
+    tmp_input_dir = os.path.join(patient_root, f"input_uploading_{int(time.time())}")
+    final_input_dir = os.path.join(patient_root, "input")
+    backup_old = None
+
+    try:
+        # 1. 流式写入 zip .part
+        with open(tmp_zip_path, "wb") as out_f:
+            while True:
+                if await request.is_disconnected():
+                    raise RuntimeError("客户端已断开")
+                chunk = await file.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                out_f.write(chunk)
+                upload_status[upload_id]["received"] += len(chunk)
+                if file_size:
+                    upload_status[upload_id]["percent"] = round(upload_status[upload_id]["received"] / file_size * 100, 2)
+
+        if file_size and upload_status[upload_id]["received"] != file_size:
+            raise RuntimeError("接收字节与 file_size 不一致")
+
+        upload_status[upload_id]["status"] = "unzip"
+        upload_status[upload_id]["message"] = "解压中"
+
+        # 2. 解压到临时目录
+        os.makedirs(tmp_input_dir, exist_ok=True)
+        try:
+            with zipfile.ZipFile(tmp_zip_path, 'r') as zf:
+                for name in zf.namelist():
+                    base = os.path.basename(name)
+                    if not base:
+                        continue
+                    with zf.open(name) as src, open(os.path.join(tmp_input_dir, base), "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+        except Exception as e:
+            raise RuntimeError(f"解压失败: {e}")
+
+        # 3. 原子替换 input 目录
+        if os.path.isdir(final_input_dir):
+            backup_old = final_input_dir + "_old"
+            if os.path.isdir(backup_old):
+                shutil.rmtree(backup_old, ignore_errors=True)
+            os.replace(final_input_dir, backup_old)
+        os.replace(tmp_input_dir, final_input_dir)
+        if backup_old and os.path.isdir(backup_old):
+            shutil.rmtree(backup_old, ignore_errors=True)
+
+        # 4. 完成
+        upload_status[upload_id]["status"] = "done"
+        upload_status[upload_id]["message"] = "上传并解压成功"
+        upload_status[upload_id]["percent"] = 100.0
+        try:
+            os.remove(tmp_zip_path)
+        except Exception:
+            pass
+        return {"status": "ok", "upload_id": upload_id, "folder": folder_name, "message": "上传解压完成"}
+    except Exception as e:
+        upload_status[upload_id]["status"] = "aborted"
+        upload_status[upload_id]["message"] = f"失败: {e}"
+        # 清理临时
+        try:
+            if os.path.isfile(tmp_zip_path):
+                os.remove(tmp_zip_path)
+        except Exception:
+            pass
+        try:
+            if os.path.isdir(tmp_input_dir):
+                shutil.rmtree(tmp_input_dir, ignore_errors=True)
+        except Exception:
+            pass
+        # 回滚旧 input
+        if backup_old and not os.path.isdir(final_input_dir) and os.path.isdir(backup_old):
+            os.replace(backup_old, final_input_dir)
+        return {"status": "error", "upload_id": upload_id, "message": str(e)}
+    finally:
+        lock.release()
 
 @app.post("/process/{patient_name}/{study_date}")
 async def process_case(
