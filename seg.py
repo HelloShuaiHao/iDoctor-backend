@@ -14,7 +14,7 @@ def run_nnunet_predict_and_overlay(input_dir: str,
                                    output_dir: str,
                                    model_dir: str,
                                    checkpoint: str = "checkpoint_final.pth"):
-    """仅增加详细日志和进度 watchdog，不改变推理参数或调用语义。"""
+    """增加详细日志和进度 watchdog"""
     for k in ['nnUNet_raw', 'nnUNet_preprocessed', 'nnUNet_results']:
         if k not in os.environ:
             os.environ[k] = os.getcwd()
@@ -100,26 +100,21 @@ def run_nnunet_predict_and_overlay(input_dir: str,
         write_log(log_root, "[nnUNet] predictor_created")
         predictor.initialize_from_trained_model_folder(
             model_dir,
-            use_folds='all',
+            # use_folds='all',
+            use_folds=(0,),  # 改为 (0,) 让它在根目录找权重,而不是 fold_all/            
             checkpoint_name=checkpoint,
         )
         write_log(log_root, "[nnUNet] model_initialized begin_predict")
         write_log(log_root, f"[nnUNet] PREDICT_CALL input_type={type(input_dir)} is_dir={os.path.isdir(input_dir)}")
-        # 1. 确保权重存在, 若根目录没有则尝试从 fold_all 软链接常见文件名
+        # 确保权重存在, 若根目录没有则尝试从 fold_all 软链接常见文件名
         weight_root = os.path.join(model_dir, checkpoint)
-        if not os.path.isfile(weight_root):
-            candidate_names = [checkpoint, 'model_final.pth', 'checkpoint_best.pth']
-            for cn in candidate_names:
-                cand = os.path.join(model_dir, 'fold_all', cn)
-                if os.path.isfile(cand):
-                    try:
-                        os.symlink(cand, weight_root)
-                        write_log(log_root, f"[nnUNet] SYMLINK {cand} -> {weight_root}")
-                    except FileExistsError:
-                        pass
-                    break
-        if not os.path.isfile(weight_root):
-            raise RuntimeError(f"缺少权重文件: {weight_root}. 请将 fold_all 内的权重复制或软链接到模型根目录")
+        
+        # 删除原来的软链接逻辑
+        # 直接验证权重是否存在
+        weight_path = os.path.join(model_dir, checkpoint)
+        if not os.path.isfile(weight_path):
+            raise RuntimeError(f"权重文件不存在: {weight_path}")
+        write_log(log_root, f"[nnUNet] checkpoint_found={weight_path}")
 
         # 2. 构造 list-of-lists cases (单模态) 而不是传目录字符串
         cases = [[os.path.join(input_dir, f)] for f in sorted(os.listdir(input_dir)) if f.endswith('_0000.png')]
@@ -127,7 +122,7 @@ def run_nnunet_predict_and_overlay(input_dir: str,
         if not cases:
             raise RuntimeError("未找到 *_0000.png 作为 nnUNet 输入")
 
-        # 3. 推理 (禁用并行导出防止空任务阻塞小样本) 
+        # 3. 推理  
         infer_t0 = time.time()
         predictor.predict_from_files(
             cases,
