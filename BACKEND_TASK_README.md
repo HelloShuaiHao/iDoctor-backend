@@ -159,7 +159,7 @@ uvicorn app:app \
     --port 4200 \
     --workers 1 \
     --timeout-keep-alive 60 \
-    --limit-max-requests 10  
+    --limit-max-requests 100  
 
 # 使用 gunicorn（
 gunicorn app:app -w 2 -k uvicorn.workers.UvicornWorker \
