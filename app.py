@@ -1,7 +1,11 @@
-from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, Request
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-import shutil, os, time, threading
+import shutil, os, time, threading, hashlib, json
+try:
+    import psutil  # optional for memory diagnostics
+except ImportError:  # graceful fallback
+    psutil = None
 import zipfile
 import zipfile
 import os
@@ -28,6 +32,65 @@ def _get_patient_lock(key: str):
     return _patient_locks.setdefault(key, threading.Lock())
 
 CHUNK_SIZE = 1024 * 512  # 512KB chunk
+
+# Debug flag (enable extra instrumentation)
+DEBUG_ENABLED = os.environ.get("IDOCTOR_DEBUG", "1") not in ("0", "false", "False")
+
+def _patient_root(patient_name: str, study_date: str):
+    return os.path.join(DATA_ROOT, f"{patient_name}_{study_date}")
+
+def _output_dir(patient_name: str, study_date: str):
+    return os.path.join(_patient_root(patient_name, study_date), "output")
+
+def _pipeline_log_path(output_folder: str):
+    return os.path.join(output_folder, "pipeline_debug.log")
+
+def _safe_mkdir(path: str):
+    os.makedirs(path, exist_ok=True)
+
+def _append_log_line(output_folder: str, line: str):
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    full = f"[{ts}] {line}"
+    print(full, flush=True)
+    if not output_folder:
+        return
+    try:
+        with open(_pipeline_log_path(output_folder), "a", encoding="utf-8") as f:
+            f.write(full + "\n")
+    except Exception:
+        pass
+
+def _hash_input_dir(input_dir: str):
+    files = [f for f in os.listdir(input_dir) if f.lower().endswith((".dcm", ".dcm.pk"))]
+    files.sort()
+    h = hashlib.sha256()
+    sizes = []
+    for f in files:
+        p = os.path.join(input_dir, f)
+        try:
+            st = os.stat(p)
+            h.update(f.encode())
+            h.update(str(st.st_size).encode())
+            sizes.append(st.st_size)
+        except Exception:
+            continue
+    return {
+        "count": len(files),
+        "hash": h.hexdigest(),
+        "total_bytes": sum(sizes)
+    }
+
+def _resource_snapshot():
+    snap = {}
+    if psutil:
+        p = psutil.Process()
+        with p.oneshot():
+            mem = p.memory_info()
+            snap["rss_mb"] = round(mem.rss / 1024 / 1024, 2)
+            snap["cpu_percent"] = p.cpu_percent(interval=None)
+            snap["num_threads"] = p.num_threads()
+            snap["open_files"] = len(p.open_files())
+    return snap
 # 允许的前端来源
 origins = [
     "http://localhost:7500",
@@ -209,15 +272,26 @@ async def process_case(
     }
 
 def _run_main_process(task_id: str, input_folder: str, output_folder: str):
-    """后台任务：执行 main 全流程"""
+    """后台任务：执行 main 全流程 (加调试日志)"""
+    start = time.time()
+    snap_before = _resource_snapshot() if DEBUG_ENABLED else {}
+    if DEBUG_ENABLED:
+        _append_log_line(output_folder, f"[TASK {task_id}] ===== 开始 main() input={input_folder}")
+        inp_sig = _hash_input_dir(input_folder) if os.path.isdir(input_folder) else {"error": "input_missing"}
+        _append_log_line(output_folder, f"[TASK {task_id}] 输入签名 {json.dumps(inp_sig, ensure_ascii=False)}")
+        _append_log_line(output_folder, f"[TASK {task_id}] 资源快照(before) {snap_before}")
+        # 列出 output 目录现有子目录(第二次运行时最关键)
+        if os.path.isdir(output_folder):
+            existing = os.listdir(output_folder)
+            _append_log_line(output_folder, f"[TASK {task_id}] 现有output子项目: {existing}")
     try:
-        print(f"[后台任务 {task_id}] 开始全流程处理...")
         task_status[task_id]["progress"] = 10
         task_status[task_id]["message"] = "正在处理..."
-        
         main(input_folder, output_folder)
-        
-        print(f"[后台任务 {task_id}] 全流程处理完成")
+        elapsed = time.time() - start
+        if DEBUG_ENABLED:
+            snap_after = _resource_snapshot()
+            _append_log_line(output_folder, f"[TASK {task_id}] main() 完成 耗时={elapsed:.2f}s 资源after={snap_after}")
         task_status[task_id] = {
             "status": "completed",
             "progress": 100,
@@ -225,8 +299,9 @@ def _run_main_process(task_id: str, input_folder: str, output_folder: str):
             "output_dir": output_folder
         }
     except Exception as e:
-        print(f"[后台任务 {task_id}] 处理失败: {e}")
-        traceback.print_exc()
+        tb = traceback.format_exc()
+        if DEBUG_ENABLED:
+            _append_log_line(output_folder, f"[TASK {task_id}] 异常: {e}\n{tb}")
         task_status[task_id] = {
             "status": "failed",
             "progress": 0,
@@ -336,13 +411,17 @@ async def api_continue_after_l3(
 def _run_continue_after_l3(task_id: str, input_folder: str, output_folder: str):
     """后台任务：执行 continue_after_l3"""
     try:
+        if DEBUG_ENABLED:
+            _append_log_line(output_folder, f"[TASK {task_id}] ===== 开始 continue_after_l3() input={input_folder}")
+            if os.path.isdir(output_folder):
+                _append_log_line(output_folder, f"[TASK {task_id}] output初始: {os.listdir(output_folder)}")
         print(f"[后台任务 {task_id}] 开始处理...")
         task_status[task_id]["progress"] = 10
         task_status[task_id]["message"] = "正在读取 DICOM 和 L3 mask..."
-        
         result = continue_after_l3(input_folder, output_folder)
-        
         print(f"[后台任务 {task_id}] 处理完成")
+        if DEBUG_ENABLED:
+            _append_log_line(output_folder, f"[TASK {task_id}] continue_after_l3() 完成")
         task_status[task_id] = {
             "status": "completed",
             "progress": 100,
@@ -350,8 +429,10 @@ def _run_continue_after_l3(task_id: str, input_folder: str, output_folder: str):
             "result": result
         }
     except Exception as e:
+        tb = traceback.format_exc()
         print(f"[后台任务 {task_id}] 处理失败: {e}")
-        traceback.print_exc()
+        if DEBUG_ENABLED:
+            _append_log_line(output_folder, f"[TASK {task_id}] continue_after_l3 异常: {e}\n{tb}")
         task_status[task_id] = {
             "status": "failed",
             "progress": 0,
@@ -376,6 +457,24 @@ def list_tasks():
         "tasks": task_status,
         "count": len(task_status)
     }
+
+@app.get("/debug_log/{patient_name}/{study_date}")
+def get_debug_log(patient_name: str, study_date: str, lines: int = 300):
+    """获取指定病例 pipeline_debug.log 最后 N 行"""
+    output_folder = _output_dir(patient_name, study_date)
+    log_path = _pipeline_log_path(output_folder)
+    if not os.path.isfile(log_path):
+        raise HTTPException(status_code=404, detail="log 不存在")
+    if lines <= 0:
+        lines = 200
+    # 读取尾部
+    data = []
+    with open(log_path, "r", encoding="utf-8") as f:
+        # 简易尾读
+        from collections import deque
+        dq = deque(f, maxlen=lines)
+        data = list(dq)
+    return {"patient": patient_name, "study_date": study_date, "lines": len(data), "content": data}
 
 @app.get("/get_output_image/{patient_name}/{study_date}/{folder}/{filename}")
 def get_output_image(patient_name: str, study_date: str, folder: str, filename: str):
