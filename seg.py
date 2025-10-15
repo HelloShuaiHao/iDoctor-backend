@@ -139,19 +139,26 @@ def run_nnunet_predict_and_overlay(input_dir: str,
         )
         infer_t1 = time.time()
 
-        # 4. 等待最多 60s 收集 nii (通常即刻出现)
+        # 4. 等待最多 60s 收集输出文件（支持 .nii.gz 或 .png）
         deadline = time.time() + 60
-        nii_files = []
+        output_files = []
         while time.time() < deadline:
+            # 检查 nii.gz 或 png 输出
             nii_files = [f for f in os.listdir(output_dir) if f.endswith('.nii.gz')]
-            if len(nii_files) >= len(cases):
+            png_files = [f for f in os.listdir(output_dir) if f.endswith('.png') and not f.endswith('_0000.png')]
+            output_files = nii_files if nii_files else png_files
+            
+            if len(output_files) >= len(cases):
                 break
             time.sleep(1)
+            
         dur = time.time() - start_time
         out_files = sorted(os.listdir(output_dir))
-        write_log(log_root, f"[nnUNet] DONE duration={dur:.2f}s infer_time={infer_t1-infer_t0:.2f}s out_total={len(out_files)} nii={len(nii_files)} sample={out_files[:12]}")
-        if len(nii_files) == 0:
-            raise RuntimeError("推理完成但未生成 *.nii.gz (检查权重/输入尺寸/模型配置)")
+        output_format = '.nii.gz' if any(f.endswith('.nii.gz') for f in output_files) else '.png'
+        write_log(log_root, f"[nnUNet] DONE duration={dur:.2f}s infer_time={infer_t1-infer_t0:.2f}s out_total={len(out_files)} output_format={output_format} output_count={len(output_files)} sample={out_files[:12]}")
+        
+        if len(output_files) == 0:
+            raise RuntimeError("推理完成但未生成输出文件 (检查权重/输入尺寸/模型配置)")
     except Exception as e:
         write_log(log_root, f"[nnUNet] EXCEPTION {e}")
         traceback.print_exc()
