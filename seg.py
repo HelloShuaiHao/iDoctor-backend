@@ -135,7 +135,7 @@ def run_nnunet_predict_and_overlay(input_dir: str,
             output_dir,
             save_probabilities=False,
             num_processes_preprocessing=1,
-            num_processes_segmentation_export=0,
+            num_processes_segmentation_export=1,
         )
         infer_t1 = time.time()
 
