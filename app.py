@@ -31,6 +31,11 @@ _patient_locks = {}
 def _get_patient_lock(key: str):
     return _patient_locks.setdefault(key, threading.Lock())
 
+# 每个任务的锁，防止重复提交
+task_locks = {}
+def _get_task_lock(task_id: str):
+    return task_locks.setdefault(task_id, threading.Lock())
+
 CHUNK_SIZE = 1024 * 512  # 512KB chunk
 
 # Debug flag (enable extra instrumentation)
@@ -239,37 +244,58 @@ async def process_case(
 ):
     task_id = f"main_{patient_name}_{study_date}"
     
-    # 检查任务是否已在处理中
-    if task_id in task_status and task_status[task_id]["status"] == "processing":
+    # 使用锁防止并发提交
+    lock = _get_task_lock(task_id)
+    if not lock.acquire(blocking=False):
         return {
-            "status": "processing",
+            "status": "blocked",
             "task_id": task_id,
             "message": "任务正在处理中，请勿重复提交"
         }
     
-    # 初始化任务状态
-    task_status[task_id] = {
-        "status": "processing",
-        "progress": 0,
-        "message": "任务已提交"
-    }
-    
-    folder_name = f"{patient_name}_{study_date}"
-    patient_root = os.path.join(DATA_ROOT, folder_name)
-    input_folder = os.path.join(patient_root, "input")
-    output_folder = os.path.join(patient_root, "output")
-    os.makedirs(output_folder, exist_ok=True)
+    try:
+        # 检查是否有正在运行的任务
+        if task_id in task_status:
+            status = task_status[task_id].get("status")
+            # 如果是正在处理中的任务，返回现有状态
+            if status == "processing":
+                started = task_status[task_id].get("started_at", 0)
+                elapsed = time.time() - started
+                # 如果任务已经运行超过10分钟，认为是僵尸任务，允许重新提交
+                if elapsed < 600:  # 10分钟
+                    return {
+                        "status": "processing",
+                        "task_id": task_id,
+                        "message": f"任务正在处理中(已运行 {int(elapsed)}秒)，请勿重复提交"
+                    }
+        
+        # 初始化任务状态
+        task_status[task_id] = {
+            "status": "processing",
+            "progress": 0,
+            "message": "任务已提交",
+            "started_at": time.time(),
+            "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        folder_name = f"{patient_name}_{study_date}"
+        patient_root = os.path.join(DATA_ROOT, folder_name)
+        input_folder = os.path.join(patient_root, "input")
+        output_folder = os.path.join(patient_root, "output")
+        os.makedirs(output_folder, exist_ok=True)
 
-    print(f"[API] 提交全流程后台任务: {task_id}")
-    
-    # 提交后台任务
-    background_tasks.add_task(_run_main_process, task_id, input_folder, output_folder)
-    
-    return {
-        "status": "submitted",
-        "task_id": task_id,
-        "message": "全流程任务已提交到后台处理，请轮询 /task_status/{task_id} 查看进度"
-    }
+        print(f"[API] 提交全流程后台任务: {task_id}")
+        
+        # 提交后台任务
+        background_tasks.add_task(_run_main_process, task_id, input_folder, output_folder)
+        
+        return {
+            "status": "submitted",
+            "task_id": task_id,
+            "message": "全流程任务已提交到后台处理，请轮询 /task_status/{task_id} 查看进度"
+        }
+    finally:
+        lock.release()
 
 def _run_main_process(task_id: str, input_folder: str, output_folder: str):
     """后台任务：执行 main 全流程 (加调试日志)"""
@@ -296,7 +322,10 @@ def _run_main_process(task_id: str, input_folder: str, output_folder: str):
             "status": "completed",
             "progress": 100,
             "message": "全流程处理完成",
-            "output_dir": output_folder
+            "output_dir": output_folder,
+            "started_at": task_status[task_id].get("started_at"),
+            "completed_at": time.time(),
+            "duration": elapsed
         }
     except Exception as e:
         tb = traceback.format_exc()
@@ -306,7 +335,9 @@ def _run_main_process(task_id: str, input_folder: str, output_folder: str):
             "status": "failed",
             "progress": 0,
             "message": f"处理失败: {str(e)}",
-            "error": str(e)
+            "error": str(e),
+            "started_at": task_status[task_id].get("started_at"),
+            "failed_at": time.time()
         }
 
 # 返回所有文件夹的 病人-日期 列表
@@ -374,42 +405,62 @@ async def api_continue_after_l3(
     study_date: str,
     background_tasks: BackgroundTasks
 ):
-    task_id = f"{patient_name}_{study_date}"
+    task_id = f"cont_{patient_name}_{study_date}"  # 改为 cont_ 前缀避免冲突
     
-    # 检查任务是否已在处理中
-    if task_id in task_status and task_status[task_id]["status"] == "processing":
+    # 使用锁防止并发提交
+    lock = _get_task_lock(task_id)
+    if not lock.acquire(blocking=False):
         return {
-            "status": "processing",
+            "status": "blocked",
             "task_id": task_id,
             "message": "任务正在处理中，请勿重复提交"
         }
     
-    # 初始化任务状态
-    task_status[task_id] = {
-        "status": "processing",
-        "progress": 0,
-        "message": "任务已提交"
-    }
-    
-    folder = f"{patient_name}_{study_date}"
-    input_folder = os.path.join(DATA_ROOT, folder, "input")
-    output_folder = os.path.join(DATA_ROOT, folder, "output")
-    
-    print(f"[API] 提交后台任务: {task_id}")
-    print(f"[API] Input folder: {input_folder}")
-    print(f"[API] Output folder: {output_folder}")
-    
-    # 提交后台任务
-    background_tasks.add_task(_run_continue_after_l3, task_id, input_folder, output_folder)
-    
-    return {
-        "status": "submitted",
-        "task_id": task_id,
-        "message": "任务已提交到后台处理，请轮询 /task_status/{task_id} 查看进度"
-    }
+    try:
+        # 检查是否有正在运行的任务
+        if task_id in task_status:
+            status = task_status[task_id].get("status")
+            if status == "processing":
+                started = task_status[task_id].get("started_at", 0)
+                elapsed = time.time() - started
+                if elapsed < 600:  # 10分钟
+                    return {
+                        "status": "processing",
+                        "task_id": task_id,
+                        "message": f"任务正在处理中(已运行 {int(elapsed)}秒)，请勿重复提交"
+                    }
+        
+        # 初始化任务状态
+        task_status[task_id] = {
+            "status": "processing",
+            "progress": 0,
+            "message": "任务已提交",
+            "started_at": time.time(),
+            "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        folder = f"{patient_name}_{study_date}"
+        input_folder = os.path.join(DATA_ROOT, folder, "input")
+        output_folder = os.path.join(DATA_ROOT, folder, "output")
+        
+        print(f"[API] 提交后台任务: {task_id}")
+        print(f"[API] Input folder: {input_folder}")
+        print(f"[API] Output folder: {output_folder}")
+        
+        # 提交后台任务
+        background_tasks.add_task(_run_continue_after_l3, task_id, input_folder, output_folder)
+        
+        return {
+            "status": "submitted",
+            "task_id": task_id,
+            "message": "任务已提交到后台处理，请轮询 /task_status/{task_id} 查看进度"
+        }
+    finally:
+        lock.release()
 
 def _run_continue_after_l3(task_id: str, input_folder: str, output_folder: str):
     """后台任务：执行 continue_after_l3"""
+    start = time.time()
     try:
         if DEBUG_ENABLED:
             _append_log_line(output_folder, f"[TASK {task_id}] ===== 开始 continue_after_l3() input={input_folder}")
@@ -419,14 +470,18 @@ def _run_continue_after_l3(task_id: str, input_folder: str, output_folder: str):
         task_status[task_id]["progress"] = 10
         task_status[task_id]["message"] = "正在读取 DICOM 和 L3 mask..."
         result = continue_after_l3(input_folder, output_folder)
+        elapsed = time.time() - start
         print(f"[后台任务 {task_id}] 处理完成")
         if DEBUG_ENABLED:
-            _append_log_line(output_folder, f"[TASK {task_id}] continue_after_l3() 完成")
+            _append_log_line(output_folder, f"[TASK {task_id}] continue_after_l3() 完成 耗时={elapsed:.2f}s")
         task_status[task_id] = {
             "status": "completed",
             "progress": 100,
             "message": "处理完成",
-            "result": result
+            "result": result,
+            "started_at": task_status[task_id].get("started_at"),
+            "completed_at": time.time(),
+            "duration": elapsed
         }
     except Exception as e:
         tb = traceback.format_exc()
@@ -437,7 +492,9 @@ def _run_continue_after_l3(task_id: str, input_folder: str, output_folder: str):
             "status": "failed",
             "progress": 0,
             "message": f"处理失败: {str(e)}",
-            "error": str(e)
+            "error": str(e),
+            "started_at": task_status[task_id].get("started_at"),
+            "failed_at": time.time()
         }
 
 @app.get("/task_status/{task_id}")
@@ -571,7 +628,20 @@ async def upload_middle_manual_mask(
 
     # 统计并生成 overlay
     result = compute_manual_middle_statistics(axisal_path, psoas_mask_path, combo_mask_path, full_overlay_dir, base_name)
-    return result
+    
+    # 清理 NaN/Inf 值
+    import math
+    def clean_floats(obj):
+        if isinstance(obj, dict):
+            return {k: clean_floats(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [clean_floats(v) for v in obj]
+        elif isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return None
+        return obj
+    
+    return clean_floats(result)
 
 def safe_clear_folder(folder, patterns):
     if not os.path.isdir(folder):
