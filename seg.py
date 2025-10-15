@@ -88,6 +88,21 @@ def run_nnunet_predict_and_overlay(input_dir: str,
     wd.start()
 
     try:
+        # 检查权重文件位置：优先 fold_all，其次根目录
+        fold_all_weight = os.path.join(model_dir, 'fold_all', checkpoint)
+        root_weight = os.path.join(model_dir, checkpoint)
+        
+        if os.path.isfile(fold_all_weight):
+            use_folds = 'all'
+            checkpoint_path = fold_all_weight
+            write_log(log_root, f"[nnUNet] checkpoint_found={fold_all_weight} (fold_all)")
+        elif os.path.isfile(root_weight):
+            use_folds = None
+            checkpoint_path = root_weight
+            write_log(log_root, f"[nnUNet] checkpoint_found={root_weight} (root)")
+        else:
+            raise RuntimeError(f"权重文件不存在: {fold_all_weight} 或 {root_weight}")
+
         predictor = nnUNetPredictor(
             tile_step_size=0.5,
             use_gaussian=True,
@@ -98,23 +113,14 @@ def run_nnunet_predict_and_overlay(input_dir: str,
             verbose_preprocessing=True,
         )
         write_log(log_root, "[nnUNet] predictor_created")
+        
         predictor.initialize_from_trained_model_folder(
             model_dir,
-            use_folds='all',
-            # use_folds=None,  # 设为 None 让它直接在根目录找权重
+            use_folds=use_folds,
             checkpoint_name=checkpoint,
         )
         write_log(log_root, "[nnUNet] model_initialized begin_predict")
         write_log(log_root, f"[nnUNet] PREDICT_CALL input_type={type(input_dir)} is_dir={os.path.isdir(input_dir)}")
-        # 确保权重存在, 若根目录没有则尝试从 fold_all 软链接常见文件名
-        weight_root = os.path.join(model_dir, checkpoint)
-        
-        # 删除原来的软链接逻辑
-        # 直接验证权重是否存在
-        weight_path = os.path.join(model_dir, checkpoint)
-        if not os.path.isfile(weight_path):
-            raise RuntimeError(f"权重文件不存在: {weight_path}")
-        write_log(log_root, f"[nnUNet] checkpoint_found={weight_path}")
 
         # 2. 构造 list-of-lists cases (单模态) 而不是传目录字符串
         cases = [[os.path.join(input_dir, f)] for f in sorted(os.listdir(input_dir)) if f.endswith('_0000.png')]
