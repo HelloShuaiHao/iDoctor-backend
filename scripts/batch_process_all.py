@@ -2,7 +2,8 @@ import os
 import requests
 import time
 
-DATA_ROOT = "data"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_ROOT = os.path.join(PROJECT_ROOT, "data")
 BASE_URL = "http://localhost:4200"
 
 def wait_for_task(task_id, interval=5, timeout=3600):
@@ -36,7 +37,7 @@ def trigger_all_process(sleep_sec=4):
         url = f"{BASE_URL}/process/{patient_name}/{study_date}"
         print(f"[提交] {url}")
         try:
-            resp = requests.post(url, timeout=30)
+            resp = requests.post(url, timeout=60)
             resp_json = resp.json()
             print(f"  状态: {resp.status_code} {resp_json}")
             task_id = resp_json.get("task_id")
