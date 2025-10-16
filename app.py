@@ -313,6 +313,11 @@ def _run_main_process(task_id: str, input_folder: str, output_folder: str):
     try:
         task_status[task_id]["progress"] = 10
         task_status[task_id]["message"] = "正在处理..."
+
+        # 清理 full_overlay 下所有 _middle.png 文件
+        full_overlay_dir = os.path.join(output_folder, "full_overlay")
+        safe_clear_folder(full_overlay_dir, ["_middle.png"])
+
         main(input_folder, output_folder)
         elapsed = time.time() - start
         if DEBUG_ENABLED:
