@@ -90,7 +90,7 @@ def dicom_to_png(ds, output_path, default_center=None, default_width=None):
     2025/10/04
     使用 HU 值的 0 到 100 范围进行线性归一
     """
-    min_val = -150
+    min_val = -100
     max_val = 200
     hu_clipped = np.clip(hu, min_val, max_val)
 
