@@ -92,6 +92,18 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
                 else:
                     print(f"[WARN] 原始切片缺失: {orig_path}")
 
+        # 复制 Axisal 文件夹下所有 png 到 axisal 子文件夹 ===
+        axisal_dst_dir = os.path.join(dst_case_dir, "axisal")
+        if os.path.isdir(axisal_dir):
+            os.makedirs(axisal_dst_dir, exist_ok=True)
+            for fname in sorted(os.listdir(axisal_dir)):
+                if fname.lower().endswith(".png"):
+                    src = os.path.join(axisal_dir, fname)
+                    dst = os.path.join(axisal_dst_dir, fname)
+                    shutil.copy2(src, dst)
+        else:
+            print(f"[WARN] 缺少 Axisal 文件夹: {axisal_dir}")
+
         # 复制 sagittal
         l3_overlay_dir = os.path.join(case_path, "output", "L3_overlay")
         sagittal_png = os.path.join(l3_overlay_dir, "sagittal_midResize.png")
