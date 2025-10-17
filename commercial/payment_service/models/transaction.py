@@ -12,7 +12,7 @@ class PaymentTransaction(Base):
     __tablename__ = "payment_transactions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)  # 允许匿名支付
     subscription_id = Column(UUID(as_uuid=True), ForeignKey("user_subscriptions.id", ondelete="SET NULL"), nullable=True, index=True)
     amount = Column(Numeric(10, 2), nullable=False)  # 金额
     currency = Column(String(10), default="CNY", nullable=False)  # 货币

@@ -12,15 +12,22 @@ class WechatProvider(PaymentProvider):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
+        
+        # 保存sandbox标志
+        self.is_sandbox = config.get("sandbox", True)
 
-        # 初始化微信支付客户端
-        self.client = WeChatPay(
-            appid=config["app_id"],
-            mch_id=config["mch_id"],
-            api_key=config["api_key"],
-            mch_cert=config.get("cert_path"),
-            mch_key=config.get("key_path")
-        )
+        if not self.is_sandbox:
+            # 生产环境：初始化真实客户端
+            self.client = WeChatPay(
+                appid=config.get("app_id", ""),
+                mch_id=config.get("mch_id", ""),
+                api_key=config.get("api_key", ""),
+                mch_cert=config.get("cert_path"),
+                mch_key=config.get("key_path")
+            )
+        else:
+            # 开发环境：不初始化真实客户端
+            self.client = None
 
     async def create_payment(
         self,
@@ -32,6 +39,15 @@ class WechatProvider(PaymentProvider):
         **kwargs
     ) -> Dict[str, Any]:
         """创建微信支付（Native扫码支付）"""
+        if self.is_sandbox:
+            # 开发环境：返回模拟数据
+            return {
+                "qr_code": f"weixin://wxpay/bizpayurl?order_id={order_id}&amount={amount}",
+                "provider_order_id": f"wechat_mock_{order_id}",
+                "order_id": order_id
+            }
+        
+        # 生产环境：使用真实 API
         # 金额转换为分
         total_fee = int(amount * 100)
 
@@ -47,6 +63,7 @@ class WechatProvider(PaymentProvider):
 
         return {
             "qr_code": result["code_url"],  # 二维码链接
+            "provider_order_id": result.get("prepay_id", order_id),
             "order_id": order_id
         }
 
