@@ -27,6 +27,10 @@ python scripts/seed_plans.py || echo "订阅计划初始化跳过"
 echo "📊 初始化配额系统基础表..."
 python scripts/init_database.py
 
+# 迁移 usage_logs 表到新结构（如果需要）
+echo "🔄 检查并迁移 usage_logs 表..."
+python scripts/migrate_usage_logs.py || echo "⚠️  迁移检查跳过"
+
 # 初始化 iDoctor 专用配额类型
 echo "🏥 初始化 iDoctor 配额类型..."
 python scripts/init_idoctor_quotas.py || echo "⚠️  iDoctor 配额初始化跳过（可能已存在）"
