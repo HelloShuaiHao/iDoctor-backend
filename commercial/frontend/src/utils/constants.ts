@@ -16,8 +16,10 @@ export const ROUTES = {
   REGISTER: '/register',
   DASHBOARD: '/dashboard',
   SUBSCRIPTION: '/subscription',
+  MY_SUBSCRIPTION: '/my-subscription',
   PAYMENT: '/payment',
   API_KEYS: '/api-keys',
+  USAGE_STATS: '/usage-stats',
 } as const;
 
 // 支付方式配置

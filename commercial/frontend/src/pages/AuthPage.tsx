@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Mail, Lock, User, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ROUTES } from '@/utils/constants';
+import { MainLayout } from '@/components/layout/MainLayout';
 
 interface AuthPageProps {
   mode?: 'login' | 'register';
@@ -129,9 +130,31 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode = 'login' }) => {
         navigate(ROUTES.DASHBOARD);
       }, 1000);
     } catch (error: any) {
+      console.error('Login error:', error);
+
+      // 处理不同类型的错误响应
+      let errorMessage = '登录失败，请检查用户名和密码';
+
+      if (error.response?.data) {
+        const data = error.response.data;
+
+        // FastAPI 验证错误格式
+        if (Array.isArray(data.detail)) {
+          errorMessage = data.detail.map((err: any) => err.msg).join(', ');
+        }
+        // 字符串类型的 detail
+        else if (typeof data.detail === 'string') {
+          errorMessage = data.detail;
+        }
+        // 对象类型的 detail
+        else if (data.detail && typeof data.detail === 'object') {
+          errorMessage = JSON.stringify(data.detail);
+        }
+      }
+
       setSubmitStatus({
         type: 'error',
-        message: error.response?.data?.detail || '登录失败，请检查用户名和密码',
+        message: errorMessage,
       });
     } finally {
       setIsSubmitting(false);
@@ -161,9 +184,31 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode = 'login' }) => {
         navigate(ROUTES.DASHBOARD);
       }, 1000);
     } catch (error: any) {
+      console.error('Registration error:', error);
+
+      // 处理不同类型的错误响应
+      let errorMessage = '注册失败，请稍后重试';
+
+      if (error.response?.data) {
+        const data = error.response.data;
+
+        // FastAPI 验证错误格式
+        if (Array.isArray(data.detail)) {
+          errorMessage = data.detail.map((err: any) => err.msg).join(', ');
+        }
+        // 字符串类型的 detail
+        else if (typeof data.detail === 'string') {
+          errorMessage = data.detail;
+        }
+        // 对象类型的 detail
+        else if (data.detail && typeof data.detail === 'object') {
+          errorMessage = JSON.stringify(data.detail);
+        }
+      }
+
       setSubmitStatus({
         type: 'error',
-        message: error.response?.data?.detail || '注册失败，请稍后重试',
+        message: errorMessage,
       });
     } finally {
       setIsSubmitting(false);
@@ -171,8 +216,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode = 'login' }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 p-4">
-      <Card className="w-full max-w-md shadow-lg">
+    <MainLayout>
+      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-lg backdrop-blur-sm bg-white/95 dark:bg-slate-900/95">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">
             iDoctor 商业化平台
@@ -395,7 +441,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode = 'login' }) => {
           </Tabs>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </MainLayout>
   );
 };
 

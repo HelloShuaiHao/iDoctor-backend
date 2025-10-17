@@ -6,7 +6,10 @@ import HomePage from '@pages/HomePage';
 import AuthPage from '@pages/AuthPage';
 import DashboardPage from '@pages/DashboardPage';
 import SubscriptionPage from '@pages/SubscriptionPage';
+import MySubscriptionPage from '@pages/MySubscriptionPage';
 import PaymentPage from '@pages/PaymentPage';
+import ApiKeysPage from '@pages/ApiKeysPage';
+import UsageStatsPage from '@pages/UsageStatsPage';
 
 export const router = createBrowserRouter([
   {
@@ -30,8 +33,20 @@ export const router = createBrowserRouter([
     element: <SubscriptionPage />,
   },
   {
+    path: ROUTES.MY_SUBSCRIPTION,
+    element: <MySubscriptionPage />,
+  },
+  {
     path: ROUTES.PAYMENT,
     element: <PaymentPage />,
+  },
+  {
+    path: ROUTES.API_KEYS,
+    element: <ApiKeysPage />,
+  },
+  {
+    path: ROUTES.USAGE_STATS,
+    element: <UsageStatsPage />,
   },
   {
     path: '*',
