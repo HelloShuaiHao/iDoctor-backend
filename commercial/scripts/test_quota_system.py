@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+import subprocess
+import sys
+
+try:
+    import sqlalchemy
+except ImportError:
+    print("SQLAlchemy not found. Installing...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "sqlalchemy", "asyncpg", "SQLAlchemy[asyncio]"])
+    import sqlalchemy
 """
 Quota System Test Script
 
