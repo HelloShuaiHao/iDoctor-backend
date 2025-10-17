@@ -17,31 +17,35 @@ class AlipayProvider(PaymentProvider):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
 
-        # 读取私钥文件（如果提供的是文件路径）
-        if config.get("private_key_path") and config.get("public_key_path"):
-            # 使用文件路径
+        # 在开发环境中使用模拟配置
+        if config.get("sandbox", True):
+            # 开发环境：使用模拟配置
+            app_private_key = "DEV_PRIVATE_KEY_PLACEHOLDER"
+            alipay_public_key = "DEV_PUBLIC_KEY_PLACEHOLDER"
+        else:
+            # 生产环境：读取真实密钥文件
             try:
                 with open(config["private_key_path"], "r") as f:
                     app_private_key = f.read()
                 with open(config["public_key_path"], "r") as f:
                     alipay_public_key = f.read()
-            except FileNotFoundError:
-                # 文件不存在，使用模拟值
-                app_private_key = "fake_private_key_for_development"
-                alipay_public_key = "fake_public_key_for_development"
+            except (FileNotFoundError, KeyError):
+                raise ValueError("生产环境必须配置正确的支付宝密钥文件")
+
+        # 保存sandbox标志
+        self.is_sandbox = config.get("sandbox", True)
+        
+        if not self.is_sandbox:
+            # 生产环境：配置真实客户端
+            alipay_config = AlipayClientConfig()
+            alipay_config.server_url = config.get("gateway", "https://openapi.alipaydev.com/gateway.do")
+            alipay_config.app_id = config.get("app_id", "")
+            alipay_config.app_private_key = app_private_key
+            alipay_config.alipay_public_key = alipay_public_key
+            self.client = DefaultAlipayClient(alipay_client_config=alipay_config)
         else:
-            # 直接使用字符串
-            app_private_key = config.get("private_key", "fake_private_key_for_development")
-            alipay_public_key = config.get("public_key", "fake_public_key_for_development")
-
-        # 配置客户端
-        alipay_config = AlipayClientConfig()
-        alipay_config.server_url = config.get("gateway", "https://openapi.alipaydev.com/gateway.do")
-        alipay_config.app_id = config["app_id"]
-        alipay_config.app_private_key = app_private_key
-        alipay_config.alipay_public_key = alipay_public_key
-
-        self.client = DefaultAlipayClient(alipay_client_config=alipay_config)
+            # 开发环境：不初始化真实客户端
+            self.client = None
 
     async def create_payment(
         self,
@@ -53,6 +57,15 @@ class AlipayProvider(PaymentProvider):
         **kwargs
     ) -> Dict[str, Any]:
         """创建支付宝支付（PC网站支付）"""
+        if self.is_sandbox:
+            # 开发环境：返回模拟数据
+            return {
+                "payment_url": f"https://sandbox-alipay.com/mock-payment?order_id={order_id}&amount={amount}",
+                "provider_order_id": f"alipay_mock_{order_id}",
+                "order_id": order_id
+            }
+        
+        # 生产环境：使用真实 API
         model = AlipayTradePagePayModel()
         model.out_trade_no = order_id
         model.total_amount = str(amount)
@@ -69,6 +82,7 @@ class AlipayProvider(PaymentProvider):
 
         return {
             "payment_url": response,
+            "provider_order_id": order_id,  # 在真实环境中这里应该是支付宝返回的交易号
             "order_id": order_id
         }
 

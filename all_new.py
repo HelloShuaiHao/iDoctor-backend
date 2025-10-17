@@ -130,14 +130,12 @@ def main(input_folder, output_folder):
         selected_z_indices=axial_slices_numbers
     )
     
-    selectedNumbers = reversedNumber(volume.shape[0], axial_slices_numbers)
-
-    # convert_selected_slices(dicom_folder, slice_folder, seleactedNumbers)
-    convert_selected_slices(
-        dicom_folder=dicom_folder,
-        output_folder=slice_folder,
-        selected_slices=selectedNumbers
-    )
+    # selectedNumbers = reversedNumber(volume.shape[0], axial_slices_numbers)
+    # convert_selected_slices(
+    #     dicom_folder=dicom_folder,
+    #     output_folder=slice_folder,
+    #     selected_slices=selectedNumbers
+    # )
 
     # 4. 腰大肌的识别
     write_log(output_folder, f"Run psoas nnUNet input_dir={slice_folder} output={major_mask_folder}")
@@ -285,12 +283,12 @@ def continue_after_l3(input_folder, output_folder):
         selected_z_indices=axial_slices_numbers
     )
 
-    selectedNumbers = reversedNumber(volume.shape[0], axial_slices_numbers)
-    convert_selected_slices(
-        dicom_folder=input_folder,
-        output_folder=slice_folder,
-        selected_slices=selectedNumbers
-    )
+    # selectedNumbers = reversedNumber(volume.shape[0], axial_slices_numbers)
+    # convert_selected_slices(
+    #     dicom_folder=input_folder,
+    #     output_folder=slice_folder,
+    #     selected_slices=selectedNumbers
+    # )
 
     # 肌肉分割
     full_model_dir="nnUNet_results/Dataset001_MyPNGTask/nnUNetTrainer__nnUNetPlans__2d"

@@ -1,5 +1,5 @@
 """支付 API"""
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -15,6 +15,7 @@ from ..schemas.payment import PaymentCreateRequest, PaymentResponse
 from ..providers.alipay import AlipayProvider
 from ..providers.wechat import WechatProvider
 from ..providers.base import PaymentProvider
+from ..core.dependencies import get_optional_current_user_id
 
 router = APIRouter()
 
@@ -50,10 +51,14 @@ def get_payment_provider(method: str) -> PaymentProvider:
 @router.post("/", response_model=PaymentResponse, status_code=status.HTTP_201_CREATED)
 async def create_payment(
     payment_request: PaymentCreateRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user_id: Optional[str] = Depends(get_optional_current_user_id)
 ):
     """创建支付"""
-    # 验证订阅ID（如果提供）
+    # 确定用户ID
+    user_id = None
+    
+    # 如果提供了订阅ID，验证并获取用户ID
     if payment_request.subscription_id:
         stmt = select(UserSubscription).where(UserSubscription.id == payment_request.subscription_id)
         result = await db.execute(stmt)
@@ -61,8 +66,13 @@ async def create_payment(
         if not subscription:
             raise ResourceNotFoundError("订阅不存在")
         user_id = subscription.user_id
-    else:
-        user_id = None  # 直接支付，不关联用户（需要其他认证方式）
+    elif current_user_id:
+        # 如果没有订阅ID但有认证用户，使用认证用户ID
+        try:
+            user_id = UUID(current_user_id)
+        except (ValueError, TypeError):
+            user_id = None
+    # 如果既没有订阅ID也没有认证，允许匿名支付（user_id = None）
 
     # 创建支付交易记录
     transaction = PaymentTransaction(
