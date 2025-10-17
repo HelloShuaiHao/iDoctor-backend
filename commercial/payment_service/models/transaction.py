@@ -19,7 +19,7 @@ class PaymentTransaction(Base):
     payment_method = Column(String(20), nullable=False)  # alipay/wechat/stripe
     payment_provider_id = Column(String(255), nullable=True, index=True)  # 第三方交易ID
     status = Column(String(20), default="pending", nullable=False, index=True)  # pending/completed/failed/refunded
-    metadata = Column(JSON, nullable=True)  # 额外信息
+    extra_data = Column(JSON, nullable=True)  # 额外信息
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

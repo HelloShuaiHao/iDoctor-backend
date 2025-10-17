@@ -22,9 +22,8 @@ class User(Base):
 
     # 关系
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
-    subscriptions = relationship("UserSubscription", back_populates="user", cascade="all, delete-orphan")
-    transactions = relationship("PaymentTransaction", back_populates="user", cascade="all, delete-orphan")
-    usage_logs = relationship("UsageLog", back_populates="user", cascade="all, delete-orphan")
+    # 注意：跨服务关系在微服务架构中通过 API 调用实现
+    # subscriptions, transactions, usage_logs 由 payment_service 管理
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"

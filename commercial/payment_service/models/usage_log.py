@@ -18,7 +18,7 @@ class UsageLog(Base):
     resource_id = Column(String(255), nullable=True)  # 例如: 任务ID
     quota_cost = Column(Integer, default=1, nullable=False)  # 消耗的配额数
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    metadata = Column(JSON, nullable=True)  # 额外信息（如处理时长）
+    extra_info = Column(JSON, nullable=True)  # 额外信息（如处理时长）
 
     # 关系
     user = relationship("User", back_populates="usage_logs")

@@ -14,8 +14,8 @@ COPY requirements.txt .
 # 安装 Python 依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制项目文件
-COPY . .
+# 复制项目文件到 /app/commercial 目录，保持包结构
+COPY . /app/commercial/
 
 # 设置 Python 路径
 ENV PYTHONPATH=/app
@@ -24,4 +24,4 @@ ENV PYTHONPATH=/app
 EXPOSE 9002
 
 # 启动命令
-CMD ["python", "payment_service/app.py"]
+CMD ["python", "-m", "commercial.payment_service.app"]
