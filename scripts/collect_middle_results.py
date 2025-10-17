@@ -113,6 +113,25 @@ def collect(data_root: str, out_root: str, summary_name: str = "汇总.csv"):
         else:
             print(f"[WARN] 缺少 sagittal_midResize.png: {l3_overlay_dir}")
 
+        # 复制 full_mask 与 major_mask 下的所有 png
+        for mask_dir_name in ["full_mask", "major_mask"]:
+            src_dir = os.path.join(case_path, "output", mask_dir_name)
+            if os.path.isdir(src_dir):
+                dst_dir = os.path.join(dst_case_dir, mask_dir_name)
+                os.makedirs(dst_dir, exist_ok=True)
+                copied_any_mask = False
+                for fname in sorted(os.listdir(src_dir)):
+                    if fname.lower().endswith('.png'):
+                        try:
+                            shutil.copy2(os.path.join(src_dir, fname), os.path.join(dst_dir, fname))
+                            copied_any_mask = True
+                        except Exception as e:
+                            print(f"[WARN] 复制 {mask_dir_name} 文件失败: {fname}: {e}")
+                if not copied_any_mask:
+                    print(f"[INFO] {mask_dir_name} 没有可复制 png: {src_dir}")
+            else:
+                print(f"[WARN] 缺少 {mask_dir_name} 文件夹: {src_dir}")
+
         # 复制 L3_png 文件夹下以 0000 结尾的脊椎原图文件
         l3_png_dir = os.path.join(case_path, "output", "L3_png")
         if os.path.isdir(l3_png_dir):
