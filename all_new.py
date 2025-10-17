@@ -1,4 +1,9 @@
-import SimpleITK as sitk
+try:
+    import SimpleITK as sitk
+except ImportError:
+    print("SimpleITK not found. Please install it with: pip install SimpleITK")
+    import sys
+    sys.exit(1)
 import cv2
 import os
 import numpy as np

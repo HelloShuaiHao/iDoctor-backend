@@ -1,6 +1,7 @@
 """共享配置"""
-from pydantic_settings import BaseSettings
-from typing import List
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from typing import List, Union
 
 
 class Settings(BaseSettings):
@@ -49,12 +50,25 @@ class Settings(BaseSettings):
         "http://ai.bygpu.com:55304"
     ]
 
+    @field_validator('CORS_ORIGINS', mode='before')
+    @classmethod
+    def parse_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(',')]
+        return v
+
     # 环境
     ENVIRONMENT: str = "development"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    # 开关
+    ENABLE_AUTH: bool = False
+    ENABLE_QUOTA: bool = False
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        env_parse_none_str='null'
+    )
 
 
 settings = Settings()
