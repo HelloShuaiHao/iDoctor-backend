@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: idoctor_commercial_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: idoctor_commercial
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - commercial_network
+
+  # 认证服务
+  auth_service:
+    build:
+      context: ..
+      dockerfile: auth_service/Dockerfile
+    container_name: idoctor_auth_service
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres123@postgres:5432/idoctor_commercial
+      JWT_SECRET_KEY: your-super-secret-jwt-key-change-in-production
+      JWT_REFRESH_SECRET_KEY: your-super-secret-refresh-key-change-in-production
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      ENVIRONMENT: development
+    ports:
+      - "9001:9001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - commercial_network
+    restart: unless-stopped
+
+  # 支付服务
+  payment_service:
+    build:
+      context: ..
+      dockerfile: payment_service/Dockerfile
+    container_name: idoctor_payment_service
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres123@postgres:5432/idoctor_commercial
+      JWT_SECRET_KEY: your-super-secret-jwt-key-change-in-production
+      ENVIRONMENT: development
+      # 支付宝配置（沙箱环境）
+      ALIPAY_APP_ID: your_alipay_app_id
+      ALIPAY_PRIVATE_KEY: your_alipay_private_key
+      ALIPAY_PUBLIC_KEY: your_alipay_public_key
+      # 微信支付配置（沙箱环境）
+      WECHAT_APP_ID: your_wechat_app_id
+      WECHAT_MCH_ID: your_wechat_mch_id
+      WECHAT_API_KEY: your_wechat_api_key
+    ports:
+      - "9002:9002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth_service:
+        condition: service_started
+    networks:
+      - commercial_network
+    restart: unless-stopped
+
+  # 数据库初始化服务（运行一次后自动退出）
+  db_init:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.init
+    container_name: idoctor_db_init
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres123@postgres:5432/idoctor_commercial
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - commercial_network
+    restart: "no"
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  commercial_network:
+    driver: bridge
