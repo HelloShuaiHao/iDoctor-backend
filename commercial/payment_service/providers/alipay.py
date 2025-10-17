@@ -2,13 +2,18 @@
 from decimal import Decimal
 from typing import Dict, Any, Optional
 import json
+import logging
 from alipay.aop.api.AlipayClientConfig import AlipayClientConfig
 from alipay.aop.api.DefaultAlipayClient import DefaultAlipayClient
 from alipay.aop.api.domain.AlipayTradePagePayModel import AlipayTradePagePayModel
+from alipay.aop.api.domain.AlipayTradeWapPayModel import AlipayTradeWapPayModel
 from alipay.aop.api.request.AlipayTradePagePayRequest import AlipayTradePagePayRequest
+from alipay.aop.api.request.AlipayTradeWapPayRequest import AlipayTradeWapPayRequest
 from alipay.aop.api.request.AlipayTradeQueryRequest import AlipayTradeQueryRequest
 from alipay.aop.api.request.AlipayTradeRefundRequest import AlipayTradeRefundRequest
 from .base import PaymentProvider, PaymentStatus, RefundResult
+
+logger = logging.getLogger(__name__)
 
 
 class AlipayProvider(PaymentProvider):
@@ -56,34 +61,126 @@ class AlipayProvider(PaymentProvider):
         return_url: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
-        """创建支付宝支付（PC网站支付）"""
+        """创建支付宝支付（PC网站支付或手机H5支付）
+
+        Args:
+            order_id: 订单ID
+            amount: 支付金额
+            currency: 货币类型
+            subject: 订单标题
+            return_url: 支付完成后跳转地址
+            **kwargs: 额外参数
+                - payment_type: "page" (PC网站) 或 "wap" (手机H5)，默认 "page"
+                - quit_url: H5支付用户点击返回的地址
+        """
         if self.is_sandbox:
             # 开发环境：返回模拟数据
+            logger.info(f"沙箱模式：创建支付宝支付订单 {order_id}, 金额 {amount}")
             return {
                 "payment_url": f"https://sandbox-alipay.com/mock-payment?order_id={order_id}&amount={amount}",
                 "provider_order_id": f"alipay_mock_{order_id}",
                 "order_id": order_id
             }
-        
+
         # 生产环境：使用真实 API
+        payment_type = kwargs.get("payment_type", "page")  # 默认PC网站支付
+
+        try:
+            if payment_type == "wap":
+                # 手机H5支付
+                logger.info(f"创建支付宝H5支付订单: {order_id}, 金额: {amount}")
+                return await self._create_wap_payment(order_id, amount, subject, return_url, **kwargs)
+            else:
+                # PC网站支付
+                logger.info(f"创建支付宝PC网站支付订单: {order_id}, 金额: {amount}")
+                return await self._create_page_payment(order_id, amount, subject, return_url, **kwargs)
+        except Exception as e:
+            logger.error(f"创建支付宝支付失败: {str(e)}", exc_info=True)
+            raise
+
+    async def _create_page_payment(
+        self,
+        order_id: str,
+        amount: Decimal,
+        subject: str,
+        return_url: Optional[str],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """创建PC网站支付"""
         model = AlipayTradePagePayModel()
         model.out_trade_no = order_id
         model.total_amount = str(amount)
         model.subject = subject
         model.product_code = "FAST_INSTANT_TRADE_PAY"
 
+        # 可选参数
+        if kwargs.get("body"):
+            model.body = kwargs["body"]
+        if kwargs.get("timeout_express"):
+            model.timeout_express = kwargs["timeout_express"]
+        else:
+            model.timeout_express = "30m"  # 默认30分钟超时
+
         request = AlipayTradePagePayRequest(biz_model=model)
         request.notify_url = self.config.get("notify_url")
-        if return_url:
-            request.return_url = return_url
+        request.return_url = return_url or self.config.get("return_url")
 
-        # 获取支付链接
+        # 获取支付表单（HTML form）
         response = self.client.page_execute(request, http_method="GET")
+
+        logger.info(f"支付宝PC网站支付创建成功: {order_id}")
+
+        return {
+            "payment_url": response,  # 这是一个完整的支付URL
+            "provider_order_id": order_id,
+            "order_id": order_id,
+            "payment_type": "page"
+        }
+
+    async def _create_wap_payment(
+        self,
+        order_id: str,
+        amount: Decimal,
+        subject: str,
+        return_url: Optional[str],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """创建手机H5支付"""
+        model = AlipayTradeWapPayModel()
+        model.out_trade_no = order_id
+        model.total_amount = str(amount)
+        model.subject = subject
+        model.product_code = "QUICK_WAP_WAY"
+
+        # 可选参数
+        if kwargs.get("body"):
+            model.body = kwargs["body"]
+        if kwargs.get("timeout_express"):
+            model.timeout_express = kwargs["timeout_express"]
+        else:
+            model.timeout_express = "30m"
+
+        # H5特有参数
+        quit_url = kwargs.get("quit_url", return_url)
+
+        request = AlipayTradeWapPayRequest(biz_model=model)
+        request.notify_url = self.config.get("notify_url")
+        request.return_url = return_url or self.config.get("return_url")
+
+        # 设置退出URL（用户点击返回按钮）
+        if quit_url:
+            request.quit_url = quit_url
+
+        # 获取支付表单
+        response = self.client.page_execute(request, http_method="GET")
+
+        logger.info(f"支付宝H5支付创建成功: {order_id}")
 
         return {
             "payment_url": response,
-            "provider_order_id": order_id,  # 在真实环境中这里应该是支付宝返回的交易号
-            "order_id": order_id
+            "provider_order_id": order_id,
+            "order_id": order_id,
+            "payment_type": "wap"
         }
 
     async def verify_payment(self, transaction_id: str) -> PaymentStatus:

@@ -137,28 +137,55 @@ async def create_payment(
 @router.get("/{payment_id}", response_model=PaymentResponse)
 async def get_payment(
     payment_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    poll: bool = False
 ):
-    """查询支付状态"""
+    """查询支付状态
+
+    Args:
+        payment_id: 支付交易ID
+        poll: 是否主动查询支付平台最新状态（默认False，从数据库读取）
+    """
     stmt = select(PaymentTransaction).where(PaymentTransaction.id == payment_id)
     result = await db.execute(stmt)
     transaction = result.scalar_one_or_none()
-    
+
     if not transaction:
         raise ResourceNotFoundError("支付记录不存在")
-    
-    # 如果支付仍在处理中，查询最新状态
-    if transaction.status == "pending" and transaction.payment_provider_id:
+
+    # 如果启用轮询，且支付仍在处理中，主动查询最新状态
+    if poll and transaction.status == "pending" and transaction.payment_provider_id:
         provider = get_payment_provider(transaction.payment_method)
         try:
-            latest_status = await provider.verify_payment(transaction.payment_provider_id)
-            if latest_status != transaction.status:
+            # 查询支付平台的最新状态
+            latest_status = await provider.verify_payment(str(transaction.id))
+
+            # 状态有变化时更新数据库
+            if latest_status.value != transaction.status:
+                old_status = transaction.status
                 transaction.status = latest_status.value
+                transaction.extra_data = {
+                    **transaction.extra_data,
+                    "last_poll_time": str(transaction.created_at)
+                }
+
+                # 如果支付成功，激活订阅
+                if latest_status.value == "completed" and transaction.subscription_id:
+                    from ..api.webhooks import activate_subscription
+                    await activate_subscription(transaction.subscription_id, db)
+
                 await db.commit()
-        except Exception:
+
+                # 记录状态变更
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"Payment {payment_id} status updated via polling: {old_status} -> {latest_status.value}")
+        except Exception as e:
             # 查询失败不影响返回现有状态
-            pass
-    
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to poll payment status for {payment_id}: {str(e)}")
+
     return PaymentResponse(
         id=transaction.id,
         amount=transaction.amount,

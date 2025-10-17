@@ -1,0 +1,10 @@
+# 忽略所有密钥文件
+*.pem
+*.p12
+*.pfx
+*.key
+*.crt
+*.cer
+
+# 保留 README
+!README.md
