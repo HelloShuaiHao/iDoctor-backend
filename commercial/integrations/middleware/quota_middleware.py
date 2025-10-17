@@ -7,8 +7,8 @@ import re
 from typing import Optional, Dict, Any
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
-from commercial.integrations.quota_manager import QuotaManager
-from commercial.shared.config import settings
+from integrations.quota_manager import QuotaManager
+from shared.config import settings
 
 logger = logging.getLogger(__name__)
 
