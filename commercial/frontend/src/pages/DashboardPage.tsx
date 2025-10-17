@@ -33,9 +33,8 @@ const DashboardPage: React.FC = () => {
       icon: BarChart3,
       title: '使用统计',
       description: '查看您的 API 使用情况和配额',
-      action: () => {},
+      action: () => navigate(ROUTES.USAGE_STATS),
       actionLabel: '查看详情',
-      status: '开发中',
       gradient: 'from-blue-500 to-cyan-500',
     },
     {
@@ -50,8 +49,8 @@ const DashboardPage: React.FC = () => {
       icon: CreditCard,
       title: '订阅管理',
       description: '查看和管理您的订阅计划',
-      action: () => navigate(ROUTES.SUBSCRIPTION),
-      actionLabel: '管理订阅',
+      action: () => navigate(ROUTES.MY_SUBSCRIPTION),
+      actionLabel: '我的订阅',
       gradient: 'from-orange-500 to-red-500',
     },
     {

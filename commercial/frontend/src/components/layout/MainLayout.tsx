@@ -9,10 +9,13 @@ import {
   User,
   LogOut,
   Menu,
-  X
+  X,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { useState } from 'react';
 import { ROUTES } from '@/utils/constants';
+import { useTheme } from '@/hooks/useTheme';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -22,6 +25,7 @@ interface MainLayoutProps {
 export const MainLayout: FC<MainLayoutProps> = ({ children, showNavbar = true }) => {
   const navigate = useNavigate();
   const { user, logout, isAuthenticated } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
@@ -36,7 +40,10 @@ export const MainLayout: FC<MainLayoutProps> = ({ children, showNavbar = true })
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-cyan-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+    <div className="min-h-screen relative">
+      {/* Background Gradient - positioned behind everything */}
+      <div className="fixed inset-0 -z-10 bg-gradient-to-br from-blue-50 via-teal-50 to-cyan-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" />
+
       {/* Navbar */}
       {showNavbar && (
         <nav className="sticky top-0 z-50 border-b bg-white/80 dark:bg-slate-950/80 backdrop-blur-md">
@@ -76,6 +83,20 @@ export const MainLayout: FC<MainLayoutProps> = ({ children, showNavbar = true })
 
               {/* User Menu */}
               <div className="hidden md:flex items-center gap-2">
+                {/* Theme Toggle */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleTheme}
+                  className="w-9 px-0"
+                >
+                  {theme === 'light' ? (
+                    <Moon className="h-4 w-4" />
+                  ) : (
+                    <Sun className="h-4 w-4" />
+                  )}
+                </Button>
+
                 {isAuthenticated && user ? (
                   <>
                     <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-accent">
@@ -134,6 +155,25 @@ export const MainLayout: FC<MainLayoutProps> = ({ children, showNavbar = true })
                       </Button>
                     );
                   })}
+
+                  {/* Mobile Theme Toggle */}
+                  <Button
+                    variant="ghost"
+                    onClick={toggleTheme}
+                    className="justify-start gap-2"
+                  >
+                    {theme === 'light' ? (
+                      <>
+                        <Moon className="h-4 w-4" />
+                        深色模式
+                      </>
+                    ) : (
+                      <>
+                        <Sun className="h-4 w-4" />
+                        浅色模式
+                      </>
+                    )}
+                  </Button>
 
                   {isAuthenticated && user ? (
                     <>

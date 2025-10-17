@@ -6,6 +6,7 @@ import { PlanComparison } from '@/components/subscription/PlanComparison';
 import { Button } from '@/components/ui/button';
 import { type SubscriptionPlan } from '@/types/subscription';
 import { useAuth } from '@/hooks/useAuth';
+import { MainLayout } from '@/components/layout/MainLayout';
 
 const SubscriptionPage: FC = () => {
   const navigate = useNavigate();
@@ -29,11 +30,11 @@ const SubscriptionPage: FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <MainLayout>
       {/* Header Section */}
-      <div className="border-b bg-muted/30">
+      <div className="border-b bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-4xl font-bold mb-2">订阅计划</h1>
               <p className="text-muted-foreground">
@@ -81,7 +82,7 @@ const SubscriptionPage: FC = () => {
       </div>
 
       {/* FAQ or Additional Info */}
-      <div className="border-t bg-muted/20 py-12">
+      <div className="border-t bg-white/30 dark:bg-slate-900/30 backdrop-blur-sm py-12">
         <div className="container mx-auto px-4">
           <h2 className="text-2xl font-bold mb-6 text-center">常见问题</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
@@ -106,7 +107,7 @@ const SubscriptionPage: FC = () => {
           </div>
         </div>
       </div>
-    </div>
+    </MainLayout>
   );
 };
 

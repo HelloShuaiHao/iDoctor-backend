@@ -46,27 +46,24 @@ const HomePage: React.FC = () => {
 
   return (
     <MainLayout>
-      {/* Hero Section with Sparkles */}
-      <div className="relative min-h-[600px] flex items-center justify-center overflow-hidden">
-        {/* Background Sparkles */}
-        <div className="absolute inset-0">
-          <SparklesCore
-            id="homepage-sparkles"
-            background="transparent"
-            minSize={0.4}
-            maxSize={1}
-            particleDensity={80}
-            className="w-full h-full"
-            particleColor="#0ea5e9"
-            speed={0.5}
-          />
-        </div>
+      {/* Global Sparkles Background */}
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 1 }}>
+        <SparklesCore
+          id="global-sparkles"
+          background="transparent"
+          minSize={0.6}
+          maxSize={2}
+          particleDensity={60}
+          className="w-full h-full"
+          particleColor="#ffffff"
+          speed={0.25}
+        />
+      </div>
 
-        {/* Gradient Overlays */}
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-blue-50/50 to-blue-50 dark:via-slate-950/50 dark:to-slate-950" />
-
+      {/* Hero Section */}
+      <div className="relative min-h-[600px] flex items-center justify-center overflow-hidden" style={{ zIndex: 2 }}>
         {/* Content */}
-        <div className="relative z-10 container mx-auto px-4 py-20 text-center">
+        <div className="relative container mx-auto px-4 py-20 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary border border-primary/20 mb-8">
             <Activity className="h-4 w-4" />
             <span className="text-sm font-medium">AI 医疗影像分析平台</span>
@@ -123,7 +120,7 @@ const HomePage: React.FC = () => {
       </div>
 
       {/* Features Section */}
-      <div className="container mx-auto px-4 py-20">
+      <div className="relative container mx-auto px-4 py-20" style={{ zIndex: 2 }}>
         <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">核心功能</h2>
         <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
           我们提供全流程自动化的医疗影像分析服务
@@ -153,7 +150,7 @@ const HomePage: React.FC = () => {
       </div>
 
       {/* CTA Section */}
-      <div className="container mx-auto px-4 py-20">
+      <div className="relative container mx-auto px-4 py-20" style={{ zIndex: 2 }}>
         <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-secondary/5">
           <CardHeader className="text-center py-12">
             <CardTitle className="text-3xl md:text-4xl mb-4">
