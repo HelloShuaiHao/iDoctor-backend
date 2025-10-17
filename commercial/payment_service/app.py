@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from commercial.shared.config import settings
 from commercial.shared.database import init_db
-from .api import plans, subscriptions
+from .api import plans, subscriptions, payments, webhooks
 
 # 创建应用
 app = FastAPI(
@@ -27,9 +27,9 @@ app.add_middleware(
 app.include_router(plans.router, prefix="/plans", tags=["订阅计划"])
 app.include_router(subscriptions.router, prefix="/subscriptions", tags=["订阅管理"])
 
-# TODO: 添加支付和Webhook路由
-# app.include_router(payments.router, prefix="/payments", tags=["支付"])
-# app.include_router(webhooks.router, prefix="/webhooks", tags=["支付回调"])
+# 支付和回调路由
+app.include_router(payments.router, prefix="/payments", tags=["支付"])
+app.include_router(webhooks.router, prefix="/webhooks", tags=["支付回调"])
 
 
 @app.on_event("startup")

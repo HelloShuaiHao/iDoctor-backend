@@ -13,7 +13,7 @@ class PaymentCreateRequest(BaseModel):
     currency: str = "CNY"
     payment_method: str  # alipay/wechat
     return_url: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    extra_data: Optional[Dict[str, Any]] = None
 
 
 class PaymentResponse(BaseModel):

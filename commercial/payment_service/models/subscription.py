@@ -23,11 +23,11 @@ class UserSubscription(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    # 关系
-    user = relationship("User", back_populates="subscriptions")
+    # 关系（仅包含本服务内的关系）
     plan = relationship("SubscriptionPlan", back_populates="subscriptions")
     transactions = relationship("PaymentTransaction", back_populates="subscription")
     usage_logs = relationship("UsageLog", back_populates="subscription")
+    # 注意：user 关系由认证服务管理，这里仅通过 user_id 外键引用
 
     def __repr__(self):
         return f"<UserSubscription(id={self.id}, user_id={self.user_id}, status={self.status})>"

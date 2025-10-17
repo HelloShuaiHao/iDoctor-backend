@@ -23,9 +23,9 @@ class PaymentTransaction(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    # 关系
-    user = relationship("User", back_populates="transactions")
+    # 关系（仅包含本服务内的关系）
     subscription = relationship("UserSubscription", back_populates="transactions")
+    # 注意：user 关系由认证服务管理，这里仅通过 user_id 外键引用
 
     def __repr__(self):
         return f"<PaymentTransaction(id={self.id}, amount={self.amount}, status={self.status})>"

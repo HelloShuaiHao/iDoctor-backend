@@ -47,6 +47,8 @@ def main(input_folder, output_folder):
     # L3_overlay_folder = os.path.join(output_folder, "L3_overlay")
     ver_folder = os.path.join(output_folder, "verseg")
     slice_folder = os.path.join(output_folder, "Axisal")
+    # 清理 Axisal 目录下所有 png 文件
+    safe_clear_folder(slice_folder, [".png"])
     full_mask_folder = os.path.join(output_folder, "full_mask")
     clean_full_mask_folder = os.path.join(output_folder, "clean")
     full_overlay_folder = os.path.join(output_folder, "full_overlay")
@@ -240,6 +242,8 @@ def continue_after_l3(input_folder, output_folder):
         return {"error": "缺少 L3_clean_mask/sagittal_midResize.png，请先自动或手动上传"}
     
     slice_folder = os.path.join(output_folder, "Axisal")
+    # 清理 Axisal 目录下所有 png 文件
+    safe_clear_folder(slice_folder, [".png"])
     full_mask_folder = os.path.join(output_folder, "full_mask")
     clean_full_mask_folder = os.path.join(output_folder, "clean")
     full_overlay_folder = os.path.join(output_folder, "full_overlay")
@@ -361,6 +365,17 @@ def clean_nnunet_input_folder(folder):
         if f.endswith(".png") and not f.endswith("_0000.png"):
             os.remove(os.path.join(folder, f))
 
+def safe_clear_folder(folder, patterns):
+    if not os.path.isdir(folder):
+        return
+    for fname in os.listdir(folder):
+        for pat in patterns:
+            if fname.endswith(pat):
+                try:
+                    os.remove(os.path.join(folder, fname))
+                except Exception:
+                    pass
+                
 if __name__ == "__main__":
     try:
         mp.set_start_method("spawn", force=True)
