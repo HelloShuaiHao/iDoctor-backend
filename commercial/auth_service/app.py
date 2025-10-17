@@ -46,7 +46,7 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "app:app",
+        "commercial.auth_service.app:app",
         host="0.0.0.0",
         port=settings.AUTH_SERVICE_PORT,
         reload=settings.ENVIRONMENT == "development"
