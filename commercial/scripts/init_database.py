@@ -132,6 +132,20 @@ async def insert_default_quota_types():
             "default_limit": 100
         },
         {
+            "type_key": "api_calls_l3_detect",
+            "name": "L3椎骨检测",
+            "description": "检测L3椎骨位置",
+            "unit": "次",
+            "default_limit": 200
+        },
+        {
+            "type_key": "api_calls_continue",
+            "name": "L3后续处理",
+            "description": "L3检测后的继续处理",
+            "unit": "次",
+            "default_limit": 200
+        },
+        {
             "type_key": "api_calls_preview",
             "name": "预览生成",
             "description": "生成医学影像预览",
@@ -144,6 +158,20 @@ async def insert_default_quota_types():
             "description": "下载处理结果文件",
             "unit": "次",
             "default_limit": 500
+        },
+        {
+            "type_key": "storage_dicom",
+            "name": "DICOM存储",
+            "description": "DICOM文件存储空间",
+            "unit": "GB",
+            "default_limit": 10
+        },
+        {
+            "type_key": "storage_results",
+            "name": "结果存储",
+            "description": "处理结果存储空间",
+            "unit": "GB",
+            "default_limit": 5
         },
         {
             "type_key": "storage_usage",
