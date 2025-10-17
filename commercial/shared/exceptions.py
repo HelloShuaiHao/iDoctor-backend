@@ -55,3 +55,12 @@ class ValidationError(HTTPException):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=detail
         )
+
+
+class NotFoundError(HTTPException):
+    """资源未找到"""
+    def __init__(self, detail: str = "资源未找到"):
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=detail
+        )

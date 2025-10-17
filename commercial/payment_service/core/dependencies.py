@@ -37,10 +37,40 @@ async def get_current_user_id(
 async def get_current_superuser_id(
     user_id: str = Depends(get_current_user_id)
 ) -> str:
-    """获取超级用户ID（简化版本）"""
-    # 注意：这是一个简化实现
-    # 在生产环境中，应该调用认证服务API来验证用户权限
-    return user_id
+    """获取超级用户ID，通过调用认证服务验证权限"""
+    import httpx
+    
+    try:
+        # 调用认证服务获取用户信息
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"http://idoctor_auth_service:9001/users/{user_id}",
+                headers={"Authorization": f"Bearer {jwt.encode({'sub': user_id}, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)}"}
+            )
+            
+            if response.status_code == 200:
+                user_data = response.json()
+                if user_data.get("is_superuser", False):
+                    return user_id
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="仅管理员可以访问此接口"
+                    )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="无法验证用户身份"
+                )
+    except httpx.RequestError:
+        # 如果调用认证服务失败，在开发环境中允许通过
+        if settings.ENVIRONMENT == "development":
+            return user_id
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="认证服务不可用"
+            )
 
 
 async def get_optional_current_user_id(

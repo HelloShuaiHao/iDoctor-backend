@@ -1,193 +1,227 @@
 # iDoctor 商业化模块
 
-通用的认证、支付和配额管理系统，可复用于多个应用。
+> 认证、支付、配额管理的完整商业化解决方案
+> 包含后端服务和前端测试应用
 
-## 端口分配
-
-```
-API网关：        9000  (统一入口，可选)
-认证服务：       9001
-支付服务：       9002
-iDoctor后端：   4200  (现有系统)
-```
-
-## ⚡ 快速开始
-
-### 方法一：一键启动（推荐）🚀
-
-**前置要求**: 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop)
-
-**macOS / Linux:**
-```bash
-cd commercial
-./start.sh
-```
-
-**Windows:**
-```bash
-cd commercial
-start.bat
-```
-
-就这么简单！30秒后访问：
-- 认证服务 API 文档: http://localhost:9001/docs
-- 支付服务 API 文档: http://localhost:9002/docs
-
-**常用命令:**
-```bash
-# 查看服务状态
-docker compose ps
-
-# 查看日志
-docker compose logs -f
-
-# 停止服务
-docker compose down
-```
-
----
-
-### 方法二：传统部署
-
-<details>
-<summary>点击展开详细步骤</summary>
-
-#### 1. 安装依赖
-
-```bash
-cd commercial
-pip install -r requirements.txt
-```
-
-#### 2. 配置环境变量
-
-```bash
-cp .env.example .env
-# 编辑 .env 文件，填入数据库和支付配置
-```
-
-#### 3. 初始化数据库
-
-```bash
-# 创建数据库
-createdb idoctor_commercial
-
-# 运行迁移
-alembic revision --autogenerate -m "Initial tables"
-alembic upgrade head
-
-# 初始化订阅计划
-python scripts/seed_plans.py
-```
-
-#### 4. 启动服务
-
-**终端1: 启动认证服务**
-```bash
-cd auth_service
-python app.py
-```
-
-**终端2: 启动支付服务**
-```bash
-cd payment_service
-python app.py
-```
-
-</details>
-
----
-
-### 方法三：集成到现有应用
-
-```python
-# 在 iDoctor-backend/app.py 中
-from commercial.auth_service.core.dependencies import get_current_user
-from commercial.payment_service.core.quota import consume_quota
-
-@app.post("/process")
-async def process(
-    user = Depends(get_current_user),
-    db = Depends(get_db)
-):
-    # 检查并扣减配额
-    await consume_quota(db, user.id, "dicom_processing", cost=1)
-    # 原有业务逻辑...
-```
-
-## 目录结构
+## 📁 项目结构
 
 ```
 commercial/
-├── README.md                # 本文档
-├── requirements.txt         # Python 依赖
-├── alembic.ini              # 数据库迁移配置
-├── .env.example             # 环境变量模板
-├── auth_service/            # 认证服务 (JWT, API Key)
-├── payment_service/         # 支付服务 (支付宝, 微信)
-├── shared/                  # 共享工具模块
-├── scripts/                 # 初始化脚本
-├── alembic/                 # 数据库迁移
-├── docs/                    # 📚 所有文档
-│   ├── QUICK_START.md       #   - 快速开始指南
-│   ├── DOCKER_GUIDE.md      #   - Docker 详细指南
-│   ├── IMPLEMENTATION_GUIDE.md  # - 集成实施指南
-│   ├── DELIVERY_SUMMARY.md  #   - 交付总结
-│   ├── PROJECT_STATUS.md    #   - 开发进度
-│   └── COMPLETION_REPORT.md #   - 完成报告
-└── docker/                  # 🐳 Docker 相关
-    ├── docker-compose.yml   #   - Docker Compose 配置
-    ├── Dockerfile.init      #   - 数据库初始化镜像
-    ├── start.sh             #   - macOS/Linux 启动脚本
-    ├── start.bat            #   - Windows 启动脚本
-    └── .dockerignore        #   - Docker 忽略文件
+├── 📄 文档
+│   ├── docs/                          # 📚 所有文档
+│   │   ├── QUICK_START.md            # 后端快速开始
+│   │   ├── API_GUIDE.md              # API 使用指南
+│   │   ├── PROJECT_STATUS.md         # 项目进度
+│   │   └── FRONTEND_STRUCTURE.md     # 前端架构
+│   └── README.md                      # 本文件
+│
+├── 🔧 后端服务
+│   ├── auth_service/                  # 认证服务 (端口 9001)
+│   │   ├── api/                       # API 路由
+│   │   ├── core/                      # 核心逻辑
+│   │   ├── models/                    # 数据模型
+│   │   └── schemas/                   # Pydantic 模式
+│   ├── payment_service/               # 支付服务 (端口 9002)
+│   │   ├── api/                       # API 路由
+│   │   ├── core/                      # 核心逻辑
+│   │   ├── models/                    # 数据模型
+│   │   ├── providers/                 # 支付提供商
+│   │   └── schemas/                   # Pydantic 模式
+│   ├── quota_service/                 # 配额服务
+│   │   ├── models/                    # 配额模型
+│   │   └── services/                  # 配额服务
+│   └── shared/                        # 共享模块
+│       ├── config.py                  # 配置管理
+│       ├── database.py                # 数据库连接
+│       └── exceptions.py              # 自定义异常
+│
+├── 🎨 前端应用
+│   └── frontend/                      # React 测试应用 (端口 3000)
+│       ├── src/
+│       │   ├── components/            # React 组件
+│       │   ├── pages/                 # 页面组件
+│       │   ├── services/              # API 服务
+│       │   ├── hooks/                 # 自定义 Hooks
+│       │   ├── context/               # React Context
+│       │   ├── types/                 # TypeScript 类型
+│       │   └── utils/                 # 工具函数
+│       ├── README.md                  # 前端文档
+│       └── QUICK_START.md             # 前端快速开始
+│
+├── 🗄️ 数据库
+│   └── alembic/                       # 数据库迁移
+│       └── versions/                  # 迁移版本
+│
+├── 🐳 部署
+│   ├── docker/                        # Docker 配置
+│   │   ├── docker-compose.yml        # 容器编排
+│   │   └── Dockerfile.init           # 初始化镜像
+│   ├── start.sh                       # macOS/Linux 启动
+│   └── start.bat                      # Windows 启动
+│
+└── 🔨 工具
+    ├── scripts/                       # 初始化脚本
+    │   ├── create_admin.py           # 创建管理员
+    │   └── seed_plans.py             # 初始化订阅计划
+    └── requirements.txt               # Python 依赖
 ```
 
-## API文档
+## 🚀 快速开始
 
-启动服务后访问：
-- 认证服务: http://localhost:9001/docs
-- 支付服务: http://localhost:9002/docs
+### 一键启动（推荐）
 
-## 📖 详细文档
-
-查看 `docs/` 目录获取完整文档：
-
-- **[快速开始](docs/QUICK_START.md)** - 30秒快速部署指南
-- **[Docker 指南](docs/DOCKER_GUIDE.md)** - Docker 详细使用说明
-- **[集成实施](docs/IMPLEMENTATION_GUIDE.md)** - 如何集成到现有项目
-- **[交付总结](docs/DELIVERY_SUMMARY.md)** - 系统架构和功能总结
-- **[开发进度](docs/PROJECT_STATUS.md)** - 开发状态和进度跟踪
-- **[完成报告](docs/COMPLETION_REPORT.md)** - 最终交付清单
-
-## 其他应用接入
-
-### 方式1: 作为Python包引入
-
-```python
-from commercial.auth_service.core.dependencies import get_current_user
-from commercial.payment_service.core.quota import check_quota
-
-@app.get("/my-resource")
-async def my_endpoint(user = Depends(get_current_user)):
-    await check_quota(user.id, "resource_type", cost=1)
-    return {"message": "success"}
+```bash
+./start.sh              # macOS/Linux
+start.bat               # Windows
 ```
 
-### 方式2: 通过HTTP调用独立服务
+启动后访问：
+- 🔐 认证服务: http://localhost:9001/docs
+- 💳 支付服务: http://localhost:9002/docs
+- 🎨 前端应用: http://localhost:3000
 
-```python
-import httpx
+### 分步启动
 
-async def verify_token(token: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            "http://localhost:9001/auth/verify",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        return response.json()
+#### 1. 启动后端服务
+
+```bash
+cd docker
+docker compose up -d
 ```
 
-## 许可证
+#### 2. 启动前端应用
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## 📚 文档导航
+
+### 快速入门
+- [后端快速开始](./docs/QUICK_START.md) - 后端服务启动指南
+- [前端快速开始](./frontend/QUICK_START.md) - 前端应用启动指南
+
+### 开发文档
+- [API 使用指南](./docs/API_GUIDE.md) - 所有 API 端点详细说明
+- [项目进度](./docs/PROJECT_STATUS.md) - 当前开发状态
+- [前端架构](./docs/FRONTEND_STRUCTURE.md) - 前端项目结构规划
+
+### 部署文档
+- [Docker 指南](./docs/DOCKER_GUIDE.md) - Docker 部署说明
+
+## ✨ 核心功能
+
+### 🔐 认证服务 (9001)
+- ✅ 用户注册/登录
+- ✅ JWT Token 管理
+- ✅ API Key 生成
+- ✅ 权限验证
+
+### 💳 支付服务 (9002)
+- ✅ 支付宝/微信支付
+- ✅ 订阅计划管理
+- ✅ 支付回调处理
+- ✅ 退款功能
+
+### 📊 配额服务
+- ✅ 多应用配额管理
+- ✅ 使用跟踪
+- ✅ 限流控制
+- ⏳ API 端点（开发中）
+
+### 🎨 前端应用 (3000)
+- ✅ 用户认证界面
+- ✅ 订阅计划展示
+- ✅ 用户仪表板
+- ⏳ 支付流程（开发中）
+
+## 🛠️ 技术栈
+
+### 后端
+- **框架**: FastAPI
+- **数据库**: PostgreSQL
+- **ORM**: SQLAlchemy 2.0
+- **认证**: JWT + bcrypt
+- **支付**: 支付宝/微信 SDK
+
+### 前端
+- **框架**: React 18 + TypeScript
+- **构建**: Vite
+- **UI**: shadcn/ui + Tailwind CSS
+- **路由**: React Router v6
+- **HTTP**: Axios
+
+## 💡 使用示例
+
+### 测试认证流程
+
+```bash
+# 1. 注册用户
+curl -X POST http://localhost:9001/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","username":"test","password":"pass123"}'
+
+# 2. 登录获取 Token
+curl -X POST http://localhost:9001/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username_or_email":"test","password":"pass123"}'
+
+# 3. 获取用户信息
+curl http://localhost:9001/users/me \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### 测试支付流程
+
+```bash
+# 1. 查看订阅计划
+curl http://localhost:9002/plans/
+
+# 2. 创建支付订单
+curl -X POST http://localhost:9002/payments/ \
+  -H "Content-Type: application/json" \
+  -d '{"amount":99,"currency":"CNY","payment_method":"alipay"}'
+```
+
+### 前端测试
+
+1. 访问 http://localhost:3000
+2. 点击"注册"创建账号
+3. 登录后查看控制台
+4. 浏览订阅计划
+
+## 📊 开发状态
+
+### 已完成 ✅
+- 认证服务完整实现
+- 支付服务核心功能
+- 配额管理系统架构
+- 前端基础框架
+- Docker 容器化部署
+
+### 进行中 🚧
+- 配额服务 API
+- 前端支付流程
+- 前端订阅管理
+
+### 待开发 📋
+- 系统集成测试
+- 生产环境优化
+- 监控和日志系统
+
+## 📞 支持
+
+- 📖 API 文档: http://localhost:9001/docs
+- 📖 支付文档: http://localhost:9002/docs
+- 📁 更多文档: 查看 `docs/` 目录
+- 🐛 问题反馈: 创建 Issue
+
+## 📄 许可证
 
 MIT License
+
+---
+
+**快速开始**: `./start.sh` 然后访问 http://localhost:3000
