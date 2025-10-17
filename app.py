@@ -2,6 +2,38 @@ from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, Request, H
 from fastapi.middleware.cors import CORSMiddleware
 
 import shutil, os, time, threading, hashlib, json
+
+# ==================== 商业化系统集成 ====================
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
+
+# 导入中间件
+try:
+    from commercial.integrations.middleware.auth_middleware import auth_middleware
+    from commercial.integrations.middleware.quota_middleware import (
+        quota_middleware,
+        init_quota_manager
+    )
+    COMMERCIAL_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ 商业化中间件不可用: {e}")
+    COMMERCIAL_AVAILABLE = False
+
+# 配置开关
+ENABLE_AUTH = os.getenv("ENABLE_AUTH", "false").lower() == "true"
+ENABLE_QUOTA = os.getenv("ENABLE_QUOTA", "false").lower() == "true"
+
+if COMMERCIAL_AVAILABLE:
+    print(f"🔐 认证中间件: {'✅ 启用' if ENABLE_AUTH else '❌ 关闭'}")
+    print(f"📊 配额中间件: {'✅ 启用' if ENABLE_QUOTA else '❌ 关闭'}")
+else:
+    if ENABLE_AUTH or ENABLE_QUOTA:
+        print("⚠️ 商业化功能未启用（中间件导入失败）")
+    ENABLE_AUTH = False
+    ENABLE_QUOTA = False
+# ==================== 商业化系统集成结束 ====================
 try:
     import psutil  # optional for memory diagnostics
 except ImportError:  # graceful fallback
@@ -41,11 +73,30 @@ CHUNK_SIZE = 1024 * 512  # 512KB chunk
 # Debug flag (enable extra instrumentation)
 DEBUG_ENABLED = os.environ.get("IDOCTOR_DEBUG", "1") not in ("0", "false", "False")
 
-def _patient_root(patient_name: str, study_date: str):
-    return os.path.join(DATA_ROOT, f"{patient_name}_{study_date}")
+def _patient_root(patient_name: str, study_date: str, user_id: str = None):
+    """获取患者数据根目录（支持用户隔离）
+    
+    Args:
+        patient_name: 患者名称
+        study_date: 研究日期
+        user_id: 用户ID（可选）
+    
+    Returns:
+        数据目录路径
+    """
+    folder_name = f"{patient_name}_{study_date}"
+    
+    if user_id and ENABLE_AUTH:
+        # 认证模式：数据按用户隔离
+        user_data_root = os.path.join(DATA_ROOT, str(user_id))
+        os.makedirs(user_data_root, exist_ok=True)
+        return os.path.join(user_data_root, folder_name)
+    else:
+        # 开发模式：共享数据
+        return os.path.join(DATA_ROOT, folder_name)
 
-def _output_dir(patient_name: str, study_date: str):
-    return os.path.join(_patient_root(patient_name, study_date), "output")
+def _output_dir(patient_name: str, study_date: str, user_id: str = None):
+    return os.path.join(_patient_root(patient_name, study_date, user_id), "output")
 
 def _pipeline_log_path(output_folder: str):
     return os.path.join(output_folder, "pipeline_debug.log")
@@ -115,6 +166,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ==================== 注册商业化中间件 ====================
+if COMMERCIAL_AVAILABLE:
+    if ENABLE_QUOTA:
+        # 初始化配额管理器
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            try:
+                init_quota_manager(database_url)
+                print("✅ 配额管理器已初始化")
+            except Exception as e:
+                print(f"⚠️ 配额管理器初始化失败: {e}")
+                ENABLE_QUOTA = False
+        else:
+            print("⚠️ 未配置 DATABASE_URL，配额功能将不可用")
+            ENABLE_QUOTA = False
+
+    # 注册中间件 (注意顺序：先认证，再配额)
+    if ENABLE_AUTH:
+        app.middleware("http")(auth_middleware)
+        print("✅ 认证中间件已注册")
+
+    if ENABLE_QUOTA:
+        app.middleware("http")(quota_middleware)
+        print("✅ 配额中间件已注册")
+# ==================== 商业化中间件注册结束 ====================
+
+# ==================== 注册管理路由 ====================
+if COMMERCIAL_AVAILABLE and ENABLE_QUOTA:
+    try:
+        from commercial.integrations.admin_routes import router as admin_router
+        app.include_router(admin_router)
+        print("✅ 管理API路由已注册")
+    except Exception as e:
+        print(f"⚠️ 管理API路由注册失败: {e}")
+# ==================== 管理路由注册结束 ====================
+
 DATA_ROOT = "data"
 
 ############################## 上传相关接口 ##############################
@@ -138,8 +225,11 @@ async def upload_dicom_zip(
     状态说明:
       receiving -> unzip -> done / aborted / error
     """
+    # 获取用户ID
+    user_id = getattr(request.state, "user_id", None)
+    
     folder_name = f"{patient_name}_{study_date}"
-    patient_root = os.path.join(DATA_ROOT, folder_name)
+    patient_root = _patient_root(patient_name, study_date, user_id)
     os.makedirs(patient_root, exist_ok=True)
 
     lock = _get_patient_lock(folder_name)
@@ -238,10 +328,14 @@ async def upload_dicom_zip(
 
 @app.post("/process/{patient_name}/{study_date}")
 async def process_case(
+    request: Request,
     patient_name: str, 
     study_date: str,
     background_tasks: BackgroundTasks
 ):
+    # 获取用户ID（如果启用了认证）
+    user_id = getattr(request.state, "user_id", None)
+    
     task_id = f"main_{patient_name}_{study_date}"
     
     # 使用锁防止并发提交
@@ -279,7 +373,7 @@ async def process_case(
         }
         
         folder_name = f"{patient_name}_{study_date}"
-        patient_root = os.path.join(DATA_ROOT, folder_name)
+        patient_root = _patient_root(patient_name, study_date, user_id)
         input_folder = os.path.join(patient_root, "input")
         output_folder = os.path.join(patient_root, "output")
         os.makedirs(output_folder, exist_ok=True)
@@ -354,10 +448,23 @@ def _run_main_process(task_id: str, input_folder: str, output_folder: str):
 
 # 返回所有文件夹的 病人-日期 列表
 @app.get("/list_patients")
-def list_patients():
+def list_patients(request: Request):
+    """列出患者（支持用户隔离）"""
+    user_id = getattr(request.state, "user_id", None)
+    
+    if user_id and ENABLE_AUTH:
+        # 认证模式：只列出该用户的患者
+        user_data_root = os.path.join(DATA_ROOT, str(user_id))
+        if not os.path.exists(user_data_root):
+            return {"count": 0, "patients": []}
+        search_root = user_data_root
+    else:
+        # 开发模式：列出所有患者
+        search_root = DATA_ROOT
+    
     patient_folders = [
-        name for name in os.listdir(DATA_ROOT)
-        if os.path.isdir(os.path.join(DATA_ROOT, name))
+        name for name in os.listdir(search_root)
+        if os.path.isdir(os.path.join(search_root, name)) and not name.startswith('.')
     ]
     # 转换为 病人-日期 格式
     patient_date_list = [
@@ -370,9 +477,11 @@ def list_patients():
 
 # 根据病人名字和日期，返回 full_overlay 文件夹下的关键数据（两个 csv 文件和所有以 middle 结尾的图片）
 @app.get("/get_key_results/{patient_name}/{study_date}")
-def get_key_results(patient_name: str, study_date: str):
-    folder_name = f"{patient_name}_{study_date}"
-    full_overlay_folder = os.path.join(DATA_ROOT, folder_name, "output", "full_overlay")
+def get_key_results(request: Request, patient_name: str, study_date: str):
+    user_id = getattr(request.state, "user_id", None)
+    
+    patient_root = _patient_root(patient_name, study_date, user_id)
+    full_overlay_folder = os.path.join(patient_root, "output", "full_overlay")
     if not os.path.exists(full_overlay_folder):
         return {"error": "结果文件夹不存在"}
 
@@ -395,29 +504,38 @@ def get_key_results(patient_name: str, study_date: str):
 
 # 直接传输图片文件
 @app.get("/get_image/{patient_name}/{study_date}/{filename}")
-def get_image(patient_name: str, study_date: str, filename: str):
-    folder_name = f"{patient_name}_{study_date}"
-    img_path = os.path.join(DATA_ROOT, folder_name, "output", "full_overlay", filename)
+def get_image(request: Request, patient_name: str, study_date: str, filename: str):
+    user_id = getattr(request.state, "user_id", None)
+    
+    patient_root = _patient_root(patient_name, study_date, user_id)
+    img_path = os.path.join(patient_root, "output", "full_overlay", filename)
     if not os.path.exists(img_path):
         return {"error": "图片不存在"}
     return FileResponse(img_path, media_type="image/png")    
 
 @app.post("/l3_detect/{patient_name}/{study_date}")
-def api_l3_detect(patient_name: str, study_date: str):
-    folder = f"{patient_name}_{study_date}"
-    input_folder = os.path.join(DATA_ROOT, folder, "input")
-    output_folder = os.path.join(DATA_ROOT, folder, "output")
+def api_l3_detect(request: Request, patient_name: str, study_date: str):
+    # 获取用户ID（如果启用了认证）
+    user_id = getattr(request.state, "user_id", None)
+    
+    patient_root = _patient_root(patient_name, study_date, user_id)
+    input_folder = os.path.join(patient_root, "input")
+    output_folder = os.path.join(patient_root, "output")
     os.makedirs(output_folder, exist_ok=True)
     result = l3_detect(input_folder, output_folder)
     return result
 
 @app.post("/continue_after_l3/{patient_name}/{study_date}")
 async def api_continue_after_l3(
+    request: Request,
     patient_name: str, 
     study_date: str,
     background_tasks: BackgroundTasks
 ):
-    task_id = f"cont_{patient_name}_{study_date}"  # 改为 cont_ 前缀避免冲突
+    # 获取用户ID（如果启用了认证）
+    user_id = getattr(request.state, "user_id", None)
+    
+    task_id = f"cont_{patient_name}_{study_date}"
     
     # 使用锁防止并发提交
     lock = _get_task_lock(task_id)
@@ -451,9 +569,9 @@ async def api_continue_after_l3(
             "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S")
         }
         
-        folder = f"{patient_name}_{study_date}"
-        input_folder = os.path.join(DATA_ROOT, folder, "input")
-        output_folder = os.path.join(DATA_ROOT, folder, "output")
+        patient_root = _patient_root(patient_name, study_date, user_id)
+        input_folder = os.path.join(patient_root, "input")
+        output_folder = os.path.join(patient_root, "output")
         
         print(f"[API] 提交后台任务: {task_id}")
         print(f"[API] Input folder: {input_folder}")
@@ -528,9 +646,10 @@ def list_tasks():
     }
 
 @app.get("/debug_log/{patient_name}/{study_date}")
-def get_debug_log(patient_name: str, study_date: str, lines: int = 300):
+def get_debug_log(request: Request, patient_name: str, study_date: str, lines: int = 300):
     """获取指定病例 pipeline_debug.log 最后 N 行"""
-    output_folder = _output_dir(patient_name, study_date)
+    user_id = getattr(request.state, "user_id", None)
+    output_folder = _output_dir(patient_name, study_date, user_id)
     log_path = _pipeline_log_path(output_folder)
     if not os.path.isfile(log_path):
         raise HTTPException(status_code=404, detail="log 不存在")
@@ -546,29 +665,35 @@ def get_debug_log(patient_name: str, study_date: str, lines: int = 300):
     return {"patient": patient_name, "study_date": study_date, "lines": len(data), "content": data}
 
 @app.get("/get_output_image/{patient_name}/{study_date}/{folder}/{filename}")
-def get_output_image(patient_name: str, study_date: str, folder: str, filename: str):
+def get_output_image(request: Request, patient_name: str, study_date: str, folder: str, filename: str):
     # folder 例如 L3_overlay、L3_clean_mask、L3_png 等
-    file_path = os.path.join(
-        DATA_ROOT, f"{patient_name}_{study_date}", "output", folder, filename
-    )
+    user_id = getattr(request.state, "user_id", None)
+    patient_root = _patient_root(patient_name, study_date, user_id)
+    file_path = os.path.join(patient_root, "output", folder, filename)
     if not os.path.exists(file_path):
         return {"error": "图片不存在"}
     return FileResponse(file_path, media_type="image/png")
 
 @app.post("/generate_sagittal/{patient_name}/{study_date}")
-def api_generate_sagittal(patient_name: str, study_date: str, force: int = Query(0)):
-    folder = f"{patient_name}_{study_date}"
-    input_folder = os.path.join(DATA_ROOT, folder, "input")
-    output_folder = os.path.join(DATA_ROOT, folder, "output")
+def api_generate_sagittal(request: Request, patient_name: str, study_date: str, force: int = Query(0)):
+    # 获取用户ID（如果启用了认证）
+    user_id = getattr(request.state, "user_id", None)
+    
+    patient_root = _patient_root(patient_name, study_date, user_id)
+    input_folder = os.path.join(patient_root, "input")
+    output_folder = os.path.join(patient_root, "output")
     if not os.path.isdir(input_folder):
         return {"error": "请先上传 DICOM"}
     os.makedirs(output_folder, exist_ok=True)
     return generate_sagittal(input_folder, output_folder, force=bool(force))
 
 @app.post("/upload_l3_mask/{patient}/{date}")
-async def upload_l3_mask(patient: str, date: str, file: UploadFile = File(...)):
-    folder = f"{patient}_{date}"
-    output_folder = os.path.join("data", folder, "output")
+async def upload_l3_mask(request: Request, patient: str, date: str, file: UploadFile = File(...)):
+    # 获取用户ID（如果启用了认证）
+    user_id = getattr(request.state, "user_id", None)
+    
+    patient_root = _patient_root(patient, date, user_id)
+    output_folder = os.path.join(patient_root, "output")
     png_dir = os.path.join(output_folder, "L3_png")
     if not os.path.exists(os.path.join(png_dir, SAGITTAL_CLEAN)):
         return {"error": "请先调用 /generate_sagittal"}
@@ -590,12 +715,16 @@ async def upload_l3_mask(patient: str, date: str, file: UploadFile = File(...)):
 
 @app.post("/upload_middle_manual_mask/{patient}/{date}")
 async def upload_middle_manual_mask(
+    request: Request,
     patient: str, date: str,
     psoas_mask: UploadFile = File(None),
     combo_mask: UploadFile = File(None)
 ):
-    folder = f"{patient}_{date}"
-    output_folder = os.path.join("data", folder, "output")
+    # 获取用户ID（如果启用了认证）
+    user_id = getattr(request.state, "user_id", None)
+    
+    patient_root = _patient_root(patient, date, user_id)
+    output_folder = os.path.join(patient_root, "output")
     full_overlay_dir = os.path.join(output_folder, "full_overlay")
     manual_mask_dir = os.path.join(output_folder, "manual_middle_mask")
     axisal_dir = os.path.join(output_folder, "Axisal")

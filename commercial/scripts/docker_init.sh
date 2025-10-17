@@ -23,9 +23,13 @@ echo "💳 初始化订阅计划..."
 cd /app
 python scripts/seed_plans.py || echo "订阅计划初始化跳过"
 
-# 初始化配额系统
-echo "📊 初始化配额系统..."
+# 初始化配额系统基础表
+echo "📊 初始化配额系统基础表..."
 python scripts/init_database.py
+
+# 初始化 iDoctor 专用配额类型
+echo "🏥 初始化 iDoctor 配额类型..."
+python scripts/init_idoctor_quotas.py || echo "⚠️  iDoctor 配额初始化跳过（可能已存在）"
 
 echo "✅ 数据库初始化完成！"
 echo "🎉 商业化系统已准备就绪！"
