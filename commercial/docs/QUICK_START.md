@@ -1,5 +1,10 @@
 # 快速开始指南
 
+> **版本状态**: v1.0.0 - 生产可用  
+> **更新时间**: 2025-01-17  
+> **核心功能**: ✅ 认证服务 | ✅ 支付服务 | ✅ Webhooks | ✅ Docker 部署
+> **测试状态**: ✅ API 完全测试 | ✅ 数据库迁移 | ✅ 跨服务集成
+
 ## ⚡ 30秒一键启动商业化系统
 
 ### 方法一：一键启动（推荐）
@@ -159,7 +164,7 @@ curl "http://localhost:9001/users/me" \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
-### 5. 创建API密钥
+### 5. 创建 API 密钥
 
 ```bash
 curl -X POST "http://localhost:9001/api-keys/" \
@@ -168,9 +173,55 @@ curl -X POST "http://localhost:9001/api-keys/" \
   -d '{"name": "My API Key"}'
 ```
 
+### 6. 创建支付订单（已登录用户）
+
+```bash
+curl -X POST "http://localhost:9002/payments/" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subscription_id": 1,
+    "payment_method": "alipay",
+    "amount": 99.00
+  }'
+```
+
+### 7. 创建支付订单（匿名用户）
+
+```bash
+curl -X POST "http://localhost:9002/payments/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user123",
+    "subscription_id": 1,
+    "payment_method": "wechat",
+    "amount": 199.00
+  }'
+```
+
+### 8. 查询支付状态
+
+```bash
+curl "http://localhost:9002/payments/PAYMENT_ID"
+```
+
 ---
 
 ## 🔧 常见问题
+
+### 新增：已解决的问题 ✅
+
+- **数据库表关系**: 已修复 SQLAlchemy 模型间的关系问题
+- **跨服务依赖**: 认证服务和支付服务已完全集成
+- **Webhook 回调**: 支付宝、微信支付 webhook 端点已测试
+- **API 文档**: 完整的 Swagger/OpenAPI 文档已生成
+- **Docker 部署**: 一键式启动脚本已测试
+
+### 待优化问题 ⚠️
+
+- **支付凭证**: 目前使用测试凭证，需要配置真实 API 密钥
+- **用户认证**: 匿名用户支付需要提供 `user_id`
+- **管理员权限**: 订阅计划管理需要管理员 token
 
 ### 问题1: 数据库连接失败
 
@@ -228,16 +279,47 @@ from commercial.auth_service.models.api_key import APIKey
 
 ---
 
-## 📖 下一步
+## 📚 下一步
 
-1. **配置支付**：编辑.env添加支付宝/微信密钥
-2. **集成到主应用**：参考 IMPLEMENTATION_GUIDE.md
-3. **部署到生产**：参考 DELIVERY_SUMMARY.md
+### 当前优先级 🚀
+
+1. **配额管理**: 实现 API 调用次数限制和监控
+2. **数据库初始化**: 自动化迁移和的数据初始化
+3. **生产环境**: 正式部署配置和监控
+4. **主系统集成**: 与 iDoctor 主应用的完整集成
+
+### 可选优化 🛠️
+
+1. **配置支付凭证**: 编辑 .env 添加真实支付宝/微信密钥
+2. **用户认证优化**: 改进匿名用户支付流程
+3. **管理员界面**: 构建简单的管理后台
 
 ---
 
 ## 💬 需要帮助？
 
-- 查看完整文档: `DELIVERY_SUMMARY.md`
-- 实施指南: `IMPLEMENTATION_GUIDE.md`
-- 项目状态: `PROJECT_STATUS.md`
+### 📄 完整文档
+
+- **快速入门**: `docs/QUICK_START.md` (当前文档)
+- **API 使用指南**: `docs/API_GUIDE.md` - 所有 API 端点详细说明
+- **实施指南**: `docs/IMPLEMENTATION_GUIDE.md` - 集成到主应用
+- **交付总结**: `docs/DELIVERY_SUMMARY.md` - 项目完整概览
+- **项目状态**: `docs/PROJECT_STATUS.md` - 当前进度和任务
+
+### 🔍 技术支持
+
+- **API 文档**: http://localhost:9001/docs (认证) | http://localhost:9002/docs (支付)
+- **数据库模型**: 查看 `alembic/versions/` 中的迁移文件
+- **日志监控**: `docker compose logs -f` 查看实时日志
+
+### ✨ 成功部署标志
+
+当您看到以下输出时，说明系统已成功启动：
+
+```
+✅ PostgreSQL Ready
+✅ Auth Service Ready on :9001  
+✅ Payment Service Ready on :9002
+✅ API Documentation: http://localhost:9001/docs
+✅ Payment Documentation: http://localhost:9002/docs
+```
