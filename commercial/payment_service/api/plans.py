@@ -6,8 +6,7 @@ from sqlalchemy import select
 from uuid import UUID
 from commercial.shared.database import get_db
 from commercial.shared.exceptions import ResourceNotFoundError
-from commercial.auth_service.core.dependencies import get_current_superuser
-from commercial.auth_service.models.user import User
+from ..core.dependencies import get_current_superuser_id
 from ..models.plan import SubscriptionPlan
 from ..schemas.plan import SubscriptionPlanCreate, SubscriptionPlanResponse, SubscriptionPlanUpdate
 
@@ -50,7 +49,7 @@ async def get_plan(
 async def create_plan(
     plan_data: SubscriptionPlanCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_superuser)  # 仅管理员
+    _: str = Depends(get_current_superuser_id)  # 仅管理员
 ):
     """创建订阅计划（仅管理员）"""
     plan = SubscriptionPlan(**plan_data.model_dump())
@@ -65,7 +64,7 @@ async def update_plan(
     plan_id: UUID,
     plan_update: SubscriptionPlanUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_superuser)
+    _: str = Depends(get_current_superuser_id)
 ):
     """更新订阅计划（仅管理员）"""
     stmt = select(SubscriptionPlan).where(SubscriptionPlan.id == plan_id)
@@ -89,7 +88,7 @@ async def update_plan(
 async def delete_plan(
     plan_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_superuser)
+    _: str = Depends(get_current_superuser_id)
 ):
     """删除订阅计划（仅管理员）"""
     stmt = select(SubscriptionPlan).where(SubscriptionPlan.id == plan_id)

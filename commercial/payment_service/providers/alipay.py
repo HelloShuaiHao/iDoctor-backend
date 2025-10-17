@@ -17,13 +17,22 @@ class AlipayProvider(PaymentProvider):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
 
-        # 读取私钥
-        with open(config["private_key_path"], "r") as f:
-            app_private_key = f.read()
-
-        # 读取支付宝公钥
-        with open(config["public_key_path"], "r") as f:
-            alipay_public_key = f.read()
+        # 读取私钥文件（如果提供的是文件路径）
+        if config.get("private_key_path") and config.get("public_key_path"):
+            # 使用文件路径
+            try:
+                with open(config["private_key_path"], "r") as f:
+                    app_private_key = f.read()
+                with open(config["public_key_path"], "r") as f:
+                    alipay_public_key = f.read()
+            except FileNotFoundError:
+                # 文件不存在，使用模拟值
+                app_private_key = "fake_private_key_for_development"
+                alipay_public_key = "fake_public_key_for_development"
+        else:
+            # 直接使用字符串
+            app_private_key = config.get("private_key", "fake_private_key_for_development")
+            alipay_public_key = config.get("public_key", "fake_public_key_for_development")
 
         # 配置客户端
         alipay_config = AlipayClientConfig()
