@@ -1,7 +1,8 @@
 """认证 API：注册、登录、刷新token"""
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, text
 from commercial.shared.database import get_db
 from commercial.shared.exceptions import AuthenticationError, ValidationError
 from ..models.user import User
@@ -15,7 +16,40 @@ from ..core.security import (
     verify_token
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+async def assign_default_quotas(db: AsyncSession, user_id):
+    """为新用户分配默认配额"""
+    # 获取所有激活的配额类型
+    query = text("""
+        SELECT id, type_key, default_limit 
+        FROM quota_types 
+        WHERE is_active = true
+    """)
+    result = await db.execute(query)
+    quota_types = result.fetchall()
+    
+    # 为每个配额类型创建配额限制
+    for quota_type_id, type_key, default_limit in quota_types:
+        insert_query = text("""
+            INSERT INTO quota_limits (user_id, quota_type_id, limit_amount, used_amount)
+            VALUES (:user_id, :quota_type_id, :limit_amount, 0)
+            ON CONFLICT (user_id, quota_type_id) DO NOTHING
+        """)
+        await db.execute(
+            insert_query,
+            {
+                "user_id": str(user_id),
+                "quota_type_id": quota_type_id,
+                "limit_amount": default_limit
+            }
+        )
+    
+    await db.commit()
+    logger.info(f"为用户 {user_id} 分配了 {len(quota_types)} 种配额")
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -43,6 +77,13 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    # 自动为新用户分配默认配额
+    try:
+        await assign_default_quotas(db, user.id)
+        logger.info(f"✅ 为用户 {user.email} 分配了默认配额")
+    except Exception as e:
+        logger.error(f"⚠️  为用户 {user.email} 分配配额失败: {e}")
 
     return user
 

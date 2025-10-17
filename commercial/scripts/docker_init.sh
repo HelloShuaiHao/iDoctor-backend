@@ -3,6 +3,9 @@ set -e
 
 echo "🚀 开始数据库初始化..."
 
+# 设置 Python 路径
+export PYTHONPATH=/app:$PYTHONPATH
+
 # 等待数据库完全就绪
 echo "⏳ 等待 PostgreSQL 就绪..."
 sleep 5
@@ -15,15 +18,14 @@ done
 
 echo "✅ 数据库已就绪！"
 
-# 运行数据库迁移
-echo "📦 运行数据库迁移..."
-cd /app
-alembic revision --autogenerate -m "Initial tables" || echo "迁移文件可能已存在"
-alembic upgrade head
-
 # 初始化订阅计划
 echo "💳 初始化订阅计划..."
-python scripts/seed_plans.py
+cd /app
+python scripts/seed_plans.py || echo "订阅计划初始化跳过"
+
+# 初始化配额系统
+echo "📊 初始化配额系统..."
+python scripts/init_database.py
 
 echo "✅ 数据库初始化完成！"
 echo "🎉 商业化系统已准备就绪！"
