@@ -5,8 +5,8 @@
 import logging
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
-from commercial.auth_service.core.jwt import decode_access_token
-from commercial.shared.config import settings
+from auth_service.core.jwt import decode_access_token
+from shared.config import settings
 
 logger = logging.getLogger(__name__)
 
