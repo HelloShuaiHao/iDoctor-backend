@@ -101,7 +101,9 @@ async def test_database_connection():
     
     logger.info("🧪 Testing database connection...")
     
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    # For testing, we might need to override the database URL if it's not set correctly in the environment
+    database_url = os.environ.get("TEST_DATABASE_URL", settings.DATABASE_URL)
+    engine = create_async_engine(database_url, echo=False)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     
     try:
@@ -174,7 +176,8 @@ async def verify_quota_types():
         "storage_results"
     ]
     
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    database_url = os.environ.get("TEST_DATABASE_URL", settings.DATABASE_URL)
+    engine = create_async_engine(database_url, echo=False)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     
     try:
@@ -308,7 +311,7 @@ async def main():
     print()
     
     # Test 3: Endpoint mappings
-    results.append(test_endpoint_mappings())
+    results.append(await test_endpoint_mappings())
     print()
     
     # Test 4: QuotaManager (requires test user)
