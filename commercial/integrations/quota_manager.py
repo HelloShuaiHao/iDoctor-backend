@@ -94,7 +94,7 @@ class QuotaManager:
         quota_type: str,
         amount: float = 1.0,
         metadata: Optional[Dict[str, Any]] = None
-    ) -> bool:
+    ) -> Optional[float]:
         """消耗用户配额并记录使用日志
 
         Args:
@@ -104,56 +104,78 @@ class QuotaManager:
             metadata: 元数据（如endpoint, patient_name等）
 
         Returns:
-            True if consumed successfully, False otherwise
+            剩余配额，失败返回 None
         """
         try:
             async with self.async_session() as session:
                 async with session.begin():
                     # 1. 更新 quota_limits 表
+                    # 改用子查询方式以兼容 PostgreSQL
                     update_query = text("""
-                    UPDATE quota_limits ql
+                    UPDATE quota_limits
                     SET used_amount = used_amount + :amount
-                    FROM quota_types qt
-                    WHERE ql.quota_type_id = qt.id
-                      AND ql.user_id = :user_id
-                      AND qt.type_key = :quota_type
+                    WHERE user_id = :user_id
+                      AND quota_type_id = (
+                          SELECT id FROM quota_types WHERE type_key = :quota_type
+                      )
                     """)
 
-                    await session.execute(
+                    result = await session.execute(
                         update_query,
                         {"user_id": user_id, "quota_type": quota_type, "amount": amount}
                     )
+                    
+                    rows_updated = result.rowcount
+                    logger.info(f"UPDATE result: rows_updated={rows_updated}, user={user_id}, type={quota_type}, amount={amount}")
+                    if rows_updated == 0:
+                        logger.error(f"!!! NO ROWS UPDATED !!! user={user_id}, quota_type={quota_type}")
 
                     # 2. 记录使用日志（usage_logs表）
-                    # Convert metadata dict to JSON string for JSONB column
-                    metadata_json = json.dumps(metadata) if metadata else None
-                    
-                    log_query = text("""
-                    INSERT INTO usage_logs (user_id, quota_type_id, amount, endpoint, metadata, created_at)
-                    SELECT :user_id, qt.id, :amount, :endpoint, :metadata::jsonb, NOW()
-                    FROM quota_types qt
-                    WHERE qt.type_key = :quota_type
-                    """)
+                    # TODO: 修复 usage_logs 表结构后再启用
+                    # 暂时禁用日志记录，修复 quota_type_id 字段问题
+                    try:
+                        metadata_json = json.dumps(metadata) if metadata else None
+                        log_query = text("""
+                        INSERT INTO usage_logs (user_id, quota_type_id, amount, endpoint, metadata, created_at)
+                        SELECT :user_id, qt.id, :amount, :endpoint, CAST(:metadata AS jsonb), NOW()
+                        FROM quota_types qt
+                        WHERE qt.type_key = :quota_type
+                        """)
 
-                    endpoint = metadata.get("endpoint") if metadata else None
-                    await session.execute(
-                        log_query,
-                        {
-                            "user_id": user_id,
-                            "quota_type": quota_type,
-                            "amount": amount,
-                            "endpoint": endpoint,
-                            "metadata": metadata_json
-                        }
-                    )
-
-                await session.commit()
-                logger.info(f"Consumed quota: user={user_id}, type={quota_type}, amount={amount}")
-                return True
+                        endpoint = metadata.get("endpoint") if metadata else None
+                        await session.execute(
+                            log_query,
+                            {
+                                "user_id": user_id,
+                                "quota_type": quota_type,
+                                "amount": amount,
+                                "endpoint": endpoint,
+                                "metadata": metadata_json
+                            }
+                        )
+                    except Exception as log_error:
+                        # 日志记录失败不影响配额扣除
+                        logger.warning(f"Failed to insert usage log (non-fatal): {log_error}")
+                
+            # session.begin() context manager 会在退出时自动 commit
+            logger.info(f"Consumed quota: user={user_id}, type={quota_type}, amount={amount}")
+            
+            # 在同一事务中查询更新后的剩余配额
+            async with self.async_session() as new_session:
+                query = text("""
+                SELECT ql.limit_amount - ql.used_amount AS remaining
+                FROM quota_limits ql
+                JOIN quota_types qt ON ql.quota_type_id = qt.id
+                WHERE ql.user_id = :user_id AND qt.type_key = :quota_type
+                """)
+                result = await new_session.execute(query, {"user_id": user_id, "quota_type": quota_type})
+                row = result.fetchone()
+                remaining = float(row[0]) if row and row[0] >= 0 else 0.0
+                return remaining
 
         except Exception as e:
             logger.error(f"Error consuming quota: {e}", exc_info=True)
-            return False
+            return None
 
     async def get_remaining_quota(
         self,

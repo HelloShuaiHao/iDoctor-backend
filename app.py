@@ -2,6 +2,20 @@ from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, Request, H
 from fastapi.middleware.cors import CORSMiddleware
 
 import shutil, os, time, threading, hashlib, json
+import logging
+
+# 配置日志
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True
+)
+logger = logging.getLogger(__name__)
+
+# Force immediate flush
+import sys
+for handler in logging.root.handlers:
+    handler.flush = lambda: sys.stdout.flush() or sys.stderr.flush()
 
 # ==================== 商业化系统集成 ====================
 from dotenv import load_dotenv
@@ -9,30 +23,43 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv()
 
-# 导入中间件
-try:
-    from commercial.integrations.middleware.auth_middleware import auth_middleware
-    from commercial.integrations.middleware.quota_middleware import (
-        quota_middleware,
-        init_quota_manager
-    )
-    COMMERCIAL_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ 商业化中间件不可用: {e}")
-    COMMERCIAL_AVAILABLE = False
-
 # 配置开关
 ENABLE_AUTH = os.getenv("ENABLE_AUTH", "false").lower() == "true"
 ENABLE_QUOTA = os.getenv("ENABLE_QUOTA", "false").lower() == "true"
 
-if COMMERCIAL_AVAILABLE:
-    print(f"🔐 认证中间件: {'✅ 启用' if ENABLE_AUTH else '❌ 关闭'}")
-    print(f"📊 配额中间件: {'✅ 启用' if ENABLE_QUOTA else '❌ 关闭'}")
+# 导入中间件（仅在需要时）
+COMMERCIAL_AVAILABLE = False
+auth_middleware = None
+quota_middleware = None
+init_quota_manager = None
+
+if ENABLE_AUTH or ENABLE_QUOTA:
+    try:
+        import sys
+        commercial_path = os.path.abspath('commercial')
+        if commercial_path not in sys.path:
+            sys.path.insert(0, commercial_path)
+        
+        if ENABLE_AUTH:
+            from integrations.middleware.auth_middleware import auth_middleware
+        
+        if ENABLE_QUOTA:
+            from integrations.middleware.quota_middleware import (
+                quota_middleware,
+                init_quota_manager
+            )
+        
+        COMMERCIAL_AVAILABLE = True
+        logger.info(f"🔐 认证中间件: {'✅ 启用' if ENABLE_AUTH else '❌ 关闭'}")
+        logger.info(f"📊 配额中间件: {'✅ 启用' if ENABLE_QUOTA else '❌ 关闭'}")
+    except ImportError as e:
+        logger.error(f"⚠️ 商业化中间件导入失败: {e}")
+        logger.warning("⚠️ 商业化功能已禁用")
+        COMMERCIAL_AVAILABLE = False
+        ENABLE_AUTH = False
+        ENABLE_QUOTA = False
 else:
-    if ENABLE_AUTH or ENABLE_QUOTA:
-        print("⚠️ 商业化功能未启用（中间件导入失败）")
-    ENABLE_AUTH = False
-    ENABLE_QUOTA = False
+    logger.info("ℹ️  商业化功能未启用（开发模式）")
 # ==================== 商业化系统集成结束 ====================
 try:
     import psutil  # optional for memory diagnostics
@@ -50,7 +77,9 @@ from fastapi import FastAPI, UploadFile, File, Form, Query
 from compute import compute_manual_middle_statistics
 
 
+logger.info("Creating FastAPI app...")
 app = FastAPI()
+logger.info("FastAPI app created")
 
 # 全局任务状态字典 (后台计算)
 task_status = {}
@@ -158,6 +187,7 @@ origins = [
     "http://ai.bygpu.com:55303",   
     "https://ai.bygpu.com:55303", 
 ]
+logger.info("Adding CORS middleware...")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -165,44 +195,63 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+logger.info("CORS middleware added")
 
 # ==================== 注册商业化中间件 ====================
-if COMMERCIAL_AVAILABLE:
-    if ENABLE_QUOTA:
+logger.info(f"Registering commercial middleware... COMMERCIAL_AVAILABLE={COMMERCIAL_AVAILABLE}, ENABLE_AUTH={ENABLE_AUTH}, ENABLE_QUOTA={ENABLE_QUOTA}")
+if COMMERCIAL_AVAILABLE and (ENABLE_AUTH or ENABLE_QUOTA):
+    if ENABLE_QUOTA and init_quota_manager:
         # 初始化配额管理器
         database_url = os.getenv("DATABASE_URL")
         if database_url:
             try:
                 init_quota_manager(database_url)
-                print("✅ 配额管理器已初始化")
+                logger.info("✅ 配额管理器已初始化")
             except Exception as e:
-                print(f"⚠️ 配额管理器初始化失败: {e}")
+                logger.error(f"⚠️ 配额管理器初始化失败: {e}", exc_info=True)
                 ENABLE_QUOTA = False
         else:
-            print("⚠️ 未配置 DATABASE_URL，配额功能将不可用")
+            logger.warning("⚠️ 未配置 DATABASE_URL，配额功能将不可用")
             ENABLE_QUOTA = False
 
-    # 注册中间件 (注意顺序：先认证，再配额)
-    if ENABLE_AUTH:
-        app.middleware("http")(auth_middleware)
-        print("✅ 认证中间件已注册")
-
-    if ENABLE_QUOTA:
+    # 注册中间件 (注意顺序：FastAPI 中间件是反向执行，所以后注册的先执行)
+    # 我们希望：请求 → auth → quota → 路由
+    # 所以注册顺序：先 quota，后 auth
+    if ENABLE_QUOTA and quota_middleware:
         app.middleware("http")(quota_middleware)
-        print("✅ 配额中间件已注册")
+        logger.info("✅ 配额中间件已注册")
+    
+    if ENABLE_AUTH and auth_middleware:
+        app.middleware("http")(auth_middleware)
+        logger.info("✅ 认证中间件已注册")
 # ==================== 商业化中间件注册结束 ====================
 
 # ==================== 注册管理路由 ====================
 if COMMERCIAL_AVAILABLE and ENABLE_QUOTA:
     try:
-        from commercial.integrations.admin_routes import router as admin_router
+        from integrations.admin_routes import router as admin_router
         app.include_router(admin_router)
-        print("✅ 管理API路由已注册")
+        logger.info("✅ 管理API路由已注册")
     except Exception as e:
-        print(f"⚠️ 管理API路由注册失败: {e}")
+        logger.error(f"⚠️ 管理API路由注册失败: {e}")
 # ==================== 管理路由注册结束 ====================
 
 DATA_ROOT = "data"
+
+############################## 健康检查和测试接口 ##############################
+@app.get("/status")
+def get_status(request: Request):
+    """服务状态检查（用于测试认证）"""
+    user_id = getattr(request.state, "user_id", None)
+    user_email = getattr(request.state, "user_email", None)
+    return {
+        "status": "ok",
+        "authenticated": user_id is not None,
+        "user_id": user_id,
+        "user_email": user_email,
+        "enable_auth": ENABLE_AUTH,
+        "enable_quota": ENABLE_QUOTA
+    }
 
 ############################## 上传相关接口 ##############################
 @app.get("/upload_status/{upload_id}")

@@ -83,25 +83,33 @@ async def quota_middleware(request: Request, call_next):
     path = request.url.path
     method = request.method
 
+    logger.debug(f"Quota middleware: path={path}, method={method}")
+
     # 跳过免配额路径
     if path in EXEMPT_PATHS or any(path.startswith(p) for p in ["/docs", "/redoc", "/auth/"]):
+        logger.debug(f"Skipping exempt path: {path}")
         return await call_next(request)
 
     # 只检查 POST 请求（消耗性操作）
     if method != "POST":
+        logger.debug(f"Skipping non-POST method: {method}")
         return await call_next(request)
 
     # 获取用户ID（由认证中间件注入）
     user_id = getattr(request.state, "user_id", None)
+    logger.debug(f"User ID from request.state: {user_id}")
     if not user_id:
         # 未认证用户不需要配额检查（应该已被认证中间件拦截）
+        logger.warning(f"No user_id in request.state for {path}, skipping quota check")
         return await call_next(request)
 
     # 匹配端点模板
     quota_config = _match_endpoint(path)
+    logger.debug(f"Quota config for {path}: {quota_config}")
 
     if not quota_config:
         # 该端点不需要配额检查
+        logger.debug(f"No quota config found for {path}, skipping")
         return await call_next(request)
 
     quota_type = quota_config["quota_type"]
@@ -147,8 +155,10 @@ async def quota_middleware(request: Request, call_next):
         response = await call_next(request)
 
         # 3. 请求成功（2xx状态码）才扣除配额
+        logger.info(f"Response status: {response.status_code}, will consume quota: {200 <= response.status_code < 300}")
         if 200 <= response.status_code < 300:
-            await quota_manager.consume_quota(
+            logger.info(f"About to consume quota: user={user_id}, type={quota_type}, amount={required_amount}")
+            remaining_after = await quota_manager.consume_quota(
                 user_id=user_id,
                 quota_type=quota_type,
                 amount=required_amount,
@@ -162,15 +172,17 @@ async def quota_middleware(request: Request, call_next):
             )
 
             # 4. 添加配额信息到响应头
-            remaining_after = await quota_manager.get_remaining_quota(user_id, quota_type)
-            response.headers["X-Quota-Type"] = quota_type
-            response.headers["X-Quota-Remaining"] = str(int(remaining_after))
-            response.headers["X-Quota-Used"] = str(required_amount)
+            if remaining_after is not None:
+                response.headers["X-Quota-Type"] = quota_type
+                response.headers["X-Quota-Remaining"] = str(int(remaining_after))
+                response.headers["X-Quota-Used"] = str(required_amount)
 
-            logger.info(
-                f"Quota consumed: user={user_id}, type={quota_type}, "
-                f"amount={required_amount}, remaining={remaining_after}"
-            )
+                logger.info(
+                    f"Quota consumed: user={user_id}, type={quota_type}, "
+                    f"amount={required_amount}, remaining={remaining_after}"
+                )
+            else:
+                logger.error(f"Failed to consume quota, remaining=None")
 
         return response
 
