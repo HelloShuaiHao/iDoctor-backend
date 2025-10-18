@@ -98,7 +98,7 @@ const UsageStatsPage: FC = () => {
   };
 
   const formatValue = (value: number, unit: string) => {
-    if (unit === 'GB') {
+    if (unit === 'MB' || unit === 'GB') {
       return `${value.toFixed(2)} ${unit}`;
     }
     return `${Math.floor(value).toLocaleString()} ${unit}`;

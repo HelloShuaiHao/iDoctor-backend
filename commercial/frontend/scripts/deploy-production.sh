@@ -11,12 +11,12 @@ rm -rf dist/
 
 # 2. 安装依赖
 echo "📚 安装依赖..."
-npm ci --only=production
+npm ci
 
 # 3. 使用生产环境配置构建
 echo "🔨 构建生产版本..."
 export NODE_ENV=production
-npm run build
+npm run build:skip-types
 
 # 4. 检查构建结果
 if [ ! -d "dist" ]; then

@@ -37,3 +37,20 @@ class WebhookEvent(BaseModel):
     transaction_id: str
     status: str
     data: Dict[str, Any]
+
+
+class PaymentHistoryItem(BaseModel):
+    """支付历史记录项"""
+    id: UUID
+    order_id: str
+    amount: Decimal
+    currency: str
+    payment_method: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    plan_name: Optional[str] = None
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True

@@ -128,7 +128,7 @@ async def sync_storage_quota_to_db(user_id: str, quota_manager, data_root: str =
         f"Cases={storage_info['patient_count']}"
     )
 
-    # 同步各类存储配额的已用量
+    # 同步各类存储配额的已用量（单位：MB）
     # 这个函数用于在上传后实时更新实际使用量到数据库
 
     try:
@@ -136,7 +136,7 @@ async def sync_storage_quota_to_db(user_id: str, quota_manager, data_root: str =
         from sqlalchemy import text
         async with quota_manager.async_session() as session:
             async with session.begin():
-                # 更新 DICOM 存储
+                # 更新 DICOM 存储（单位：MB）
                 await session.execute(text("""
                     UPDATE quota_limits
                     SET used_amount = :used_amount, updated_at = NOW()
@@ -144,7 +144,7 @@ async def sync_storage_quota_to_db(user_id: str, quota_manager, data_root: str =
                       AND quota_type_id = (SELECT id FROM quota_types WHERE type_key = 'storage_dicom')
                 """), {"user_id": str(user_id), "used_amount": storage_info['dicom_mb']})
 
-                # 更新结果存储
+                # 更新结果存储（单位：MB）
                 await session.execute(text("""
                     UPDATE quota_limits
                     SET used_amount = :used_amount, updated_at = NOW()
@@ -152,7 +152,7 @@ async def sync_storage_quota_to_db(user_id: str, quota_manager, data_root: str =
                       AND quota_type_id = (SELECT id FROM quota_types WHERE type_key = 'storage_results')
                 """), {"user_id": str(user_id), "used_amount": storage_info['results_mb']})
 
-                # 更新总存储
+                # 更新总存储（单位：MB）
                 await session.execute(text("""
                     UPDATE quota_limits
                     SET used_amount = :used_amount, updated_at = NOW()

@@ -57,16 +57,23 @@ IDOCTOR_QUOTA_TYPES = [
     {
         "type_key": "storage_dicom",
         "name": "DICOM存储空间",
-        "description": "可存储的DICOM文件总大小",
-        "unit": "GB",
-        "default_limit": 1  # 免费版1GB
+        "description": "可存储的DICOM文件总大小（不单独限制）",
+        "unit": "MB",
+        "default_limit": 99999  # 不单独限制，仅用于统计
     },
     {
         "type_key": "storage_results",
         "name": "结果存储空间",
-        "description": "处理结果（图片+CSV）的存储空间",
-        "unit": "GB",
-        "default_limit": 0.5  # 免费版500MB
+        "description": "处理结果（图片+CSV）的存储空间（不单独限制）",
+        "unit": "MB",
+        "default_limit": 99999  # 不单独限制，仅用于统计
+    },
+    {
+        "type_key": "storage_usage",
+        "name": "存储使用量",
+        "description": "DICOM文件和处理结果的总存储空间（免费版限制）",
+        "unit": "MB",
+        "default_limit": 80  # 免费版总存储限制 80MB
     },
     {
         "type_key": "patient_cases",

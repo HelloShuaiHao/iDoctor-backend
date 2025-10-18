@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { paymentService } from '@/services/paymentService';
 import { useAuth } from '@/context/AuthContext';
 import { ROUTES, PAYMENT_STATUS } from '@/utils/constants';
+import type { PaymentRecord } from '@/types/payment';
 import {
   Receipt,
   Download,
@@ -22,20 +23,6 @@ import {
   DollarSign,
   FileText,
 } from 'lucide-react';
-
-interface PaymentRecord {
-  id: string;
-  order_id: string;
-  amount: number;
-  currency: string;
-  payment_method: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  plan_name?: string;
-  description?: string;
-  invoice_url?: string;
-}
 
 const PaymentHistoryPage: FC = () => {
   const navigate = useNavigate();
@@ -59,53 +46,12 @@ const PaymentHistoryPage: FC = () => {
       setLoading(true);
       setError(null);
 
-      // TODO: 当后端实现后替换为真实API调用
-      // const records = await paymentService.getPaymentHistory();
-
-      // 临时使用模拟数据
-      const mockPayments: PaymentRecord[] = [
-        {
-          id: '1',
-          order_id: 'ORD-20250101-001',
-          amount: 99.00,
-          currency: 'CNY',
-          payment_method: 'alipay',
-          status: 'completed',
-          created_at: new Date('2025-01-15').toISOString(),
-          updated_at: new Date('2025-01-15').toISOString(),
-          plan_name: '专业版 - 月付',
-          description: '订阅专业版套餐',
-        },
-        {
-          id: '2',
-          order_id: 'ORD-20241220-002',
-          amount: 29.00,
-          currency: 'CNY',
-          payment_method: 'wechat',
-          status: 'completed',
-          created_at: new Date('2024-12-20').toISOString(),
-          updated_at: new Date('2024-12-20').toISOString(),
-          plan_name: '基础版 - 月付',
-          description: '订阅基础版套餐',
-        },
-        {
-          id: '3',
-          order_id: 'ORD-20241201-003',
-          amount: 99.00,
-          currency: 'CNY',
-          payment_method: 'alipay',
-          status: 'refunded',
-          created_at: new Date('2024-12-01').toISOString(),
-          updated_at: new Date('2024-12-05').toISOString(),
-          plan_name: '专业版 - 月付',
-          description: '订阅专业版套餐（已退款）',
-        },
-      ];
-
-      setPayments(mockPayments);
+      // 调用真实 API 获取支付历史
+      const records = await paymentService.getPaymentHistory();
+      setPayments(records);
     } catch (err: any) {
       console.error('Failed to load payment history:', err);
-      setError('加载支付记录失败');
+      setError(err.response?.data?.detail || '加载支付记录失败');
     } finally {
       setLoading(false);
     }

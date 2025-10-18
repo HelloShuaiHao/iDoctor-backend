@@ -32,10 +32,10 @@ ENDPOINT_QUOTA_MAP = {
 }
 
 # 存储空间配额（需要特殊处理）
-# 注意：/upload_dicom_zip 已改为按次数扣除（在 ENDPOINT_QUOTA_MAP 中）
+# 注意：所有存储操作统一检查总存储配额 storage_usage（免费版限制80MB）
 STORAGE_ENDPOINTS = {
-    "/upload_l3_mask/{patient}/{date}": "storage_results",
-    "/upload_middle_manual_mask/{patient}/{date}": "storage_results"
+    "/upload_l3_mask/{patient}/{date}": "storage_usage",
+    "/upload_middle_manual_mask/{patient}/{date}": "storage_usage"
 }
 
 # 无需配额检查的路径（查询类操作）
@@ -264,7 +264,7 @@ def _extract_param(path: str, param_name: str) -> Optional[str]:
 
 
 async def _calculate_storage_amount(request: Request) -> Optional[float]:
-    """计算存储空间消耗（GB）
+    """计算存储空间消耗（MB）
 
     从请求中提取文件大小
     """
@@ -273,8 +273,8 @@ async def _calculate_storage_amount(request: Request) -> Optional[float]:
         content_length = request.headers.get("Content-Length")
         if content_length:
             bytes_size = int(content_length)
-            gb_size = bytes_size / (1024 ** 3)
-            return gb_size
+            mb_size = bytes_size / (1024 ** 2)
+            return mb_size
 
         # 方法2: 从表单数据 (file_size字段)
         if request.method == "POST":
@@ -282,8 +282,8 @@ async def _calculate_storage_amount(request: Request) -> Optional[float]:
             file_size = form.get("file_size")
             if file_size:
                 bytes_size = int(file_size)
-                gb_size = bytes_size / (1024 ** 3)
-                return gb_size
+                mb_size = bytes_size / (1024 ** 2)
+                return mb_size
 
         return None
 

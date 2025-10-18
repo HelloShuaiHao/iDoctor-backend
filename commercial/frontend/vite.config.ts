@@ -32,5 +32,9 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/payment/, '')
       }
     }
+  },
+
+  preview: {
+    port: 3000
   }
 })
