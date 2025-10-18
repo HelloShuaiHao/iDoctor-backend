@@ -49,18 +49,12 @@ services:
       context: ..
       dockerfile: payment_service/Dockerfile
     container_name: idoctor_payment_service
+    env_file:
+      - ../.env  # 从 commercial/.env 读取敏感配置
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres123@postgres:5432/idoctor_commercial
-      JWT_SECRET_KEY: 9b74ca718d95b8caebe2c0f4c945d48d781692e30d6f8113e23c462abc7c0a62
-      ENVIRONMENT: development
-      # 支付宝配置（沙箱环境）
-      ALIPAY_APP_ID: your_alipay_app_id
-      ALIPAY_PRIVATE_KEY: your_alipay_private_key
-      ALIPAY_PUBLIC_KEY: your_alipay_public_key
-      # 微信支付配置（沙箱环境）
-      WECHAT_APP_ID: your_wechat_app_id
-      WECHAT_MCH_ID: your_wechat_mch_id
-      WECHAT_API_KEY: your_wechat_api_key
+    volumes:
+      - ../keys:/app/keys:ro  # 挂载密钥文件（只读）
     ports:
       - "9002:9002"
     depends_on:
