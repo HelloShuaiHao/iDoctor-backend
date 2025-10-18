@@ -8,6 +8,7 @@ import DashboardPage from '@pages/DashboardPage';
 import SubscriptionPage from '@pages/SubscriptionPage';
 import MySubscriptionPage from '@pages/MySubscriptionPage';
 import PaymentPage from '@pages/PaymentPage';
+import PaymentHistoryPage from '@pages/PaymentHistoryPage';
 import ApiKeysPage from '@pages/ApiKeysPage';
 import UsageStatsPage from '@pages/UsageStatsPage';
 
@@ -39,6 +40,10 @@ export const router = createBrowserRouter([
   {
     path: ROUTES.PAYMENT,
     element: <PaymentPage />,
+  },
+  {
+    path: ROUTES.PAYMENT_HISTORY,
+    element: <PaymentHistoryPage />,
   },
   {
     path: ROUTES.API_KEYS,

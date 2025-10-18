@@ -18,6 +18,7 @@ export const ROUTES = {
   SUBSCRIPTION: '/subscription',
   MY_SUBSCRIPTION: '/my-subscription',
   PAYMENT: '/payment',
+  PAYMENT_HISTORY: '/payment-history',
   API_KEYS: '/api-keys',
   USAGE_STATS: '/usage-stats',
 } as const;

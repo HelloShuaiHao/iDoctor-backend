@@ -14,6 +14,28 @@ import type {
  */
 export const authService = {
   /**
+   * 发送邮箱验证码
+   */
+  async sendVerificationCode(email: string): Promise<{ message: string; success: boolean }> {
+    const response = await authAPI.post<{ message: string; success: boolean }>(
+      '/auth/send-verification-code',
+      { email }
+    );
+    return response.data;
+  },
+
+  /**
+   * 验证邮箱验证码（可选，注册时也会验证）
+   */
+  async verifyEmail(email: string, code: string): Promise<{ message: string; success: boolean }> {
+    const response = await authAPI.post<{ message: string; success: boolean }>(
+      '/auth/verify-email',
+      { email, code }
+    );
+    return response.data;
+  },
+
+  /**
    * 用户注册
    */
   async register(data: RegisterRequest): Promise<User> {

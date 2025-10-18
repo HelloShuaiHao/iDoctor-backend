@@ -17,6 +17,21 @@ from ..core.quota import get_quota_status
 router = APIRouter()
 
 
+@router.get("/", response_model=List[UserSubscriptionResponse])
+async def list_user_subscriptions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取当前用户的所有订阅（按创建时间降序）"""
+    stmt = select(UserSubscription).where(
+        UserSubscription.user_id == current_user.id
+    ).order_by(UserSubscription.created_at.desc())
+
+    result = await db.execute(stmt)
+    subscriptions = result.scalars().all()
+    return subscriptions
+
+
 @router.get("/current", response_model=UserSubscriptionResponse)
 async def get_current_subscription(
     current_user: User = Depends(get_current_user),

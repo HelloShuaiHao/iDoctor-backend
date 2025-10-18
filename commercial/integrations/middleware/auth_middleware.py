@@ -40,6 +40,11 @@ async def auth_middleware(request: Request, call_next):
     4. 返回401错误（未认证）或继续处理请求
     """
     path = request.url.path
+    method = request.method
+
+    # 跳过CORS预检请求 (OPTIONS)
+    if method == "OPTIONS":
+        return await call_next(request)
 
     # 跳过白名单路径
     if path in EXEMPT_PATHS:

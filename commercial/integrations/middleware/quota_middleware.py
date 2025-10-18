@@ -32,8 +32,8 @@ ENDPOINT_QUOTA_MAP = {
 }
 
 # 存储空间配额（需要特殊处理）
+# 注意：/upload_dicom_zip 已改为按次数扣除（在 ENDPOINT_QUOTA_MAP 中）
 STORAGE_ENDPOINTS = {
-    "/upload_dicom_zip": "storage_dicom",
     "/upload_l3_mask/{patient}/{date}": "storage_results",
     "/upload_middle_manual_mask/{patient}/{date}": "storage_results"
 }
@@ -124,8 +124,8 @@ async def quota_middleware(request: Request, call_next):
             logger.warning(f"Cannot determine file size for {path}, skipping quota check")
             return await call_next(request)
 
+    # 1. 检查配额
     try:
-        # 1. 检查配额
         has_quota = await quota_manager.check_quota(
             user_id=user_id,
             quota_type=quota_type,
@@ -150,46 +150,67 @@ async def quota_middleware(request: Request, call_next):
                     "upgrade_url": "/subscription"  # 前端升级页面
                 }
             )
-
-        # 2. 执行请求
-        response = await call_next(request)
-
-        # 3. 请求成功（2xx状态码）才扣除配额
-        logger.info(f"Response status: {response.status_code}, will consume quota: {200 <= response.status_code < 300}")
-        if 200 <= response.status_code < 300:
-            logger.info(f"About to consume quota: user={user_id}, type={quota_type}, amount={required_amount}")
-            remaining_after = await quota_manager.consume_quota(
-                user_id=user_id,
-                quota_type=quota_type,
-                amount=required_amount,
-                metadata={
-                    "endpoint": path,
-                    "method": method,
-                    "description": description,
-                    "patient_name": _extract_param(path, "patient_name") or _extract_param(path, "patient"),
-                    "study_date": _extract_param(path, "study_date") or _extract_param(path, "date"),
-                }
-            )
-
-            # 4. 添加配额信息到响应头
-            if remaining_after is not None:
-                response.headers["X-Quota-Type"] = quota_type
-                response.headers["X-Quota-Remaining"] = str(int(remaining_after))
-                response.headers["X-Quota-Used"] = str(required_amount)
-
-                logger.info(
-                    f"Quota consumed: user={user_id}, type={quota_type}, "
-                    f"amount={required_amount}, remaining={remaining_after}"
-                )
-            else:
-                logger.error(f"Failed to consume quota, remaining=None")
-
-        return response
-
     except Exception as e:
-        logger.error(f"Error in quota middleware: {e}", exc_info=True)
-        # 配额检查失败，为了系统可用性，允许通过（可配置策略）
+        logger.error(f"Error checking quota: {e}", exc_info=True)
+        # 配额检查失败，为了系统可用性，允许通过
         return await call_next(request)
+
+    # 2. 执行请求（无论成功失败都会扣配额，因为已经消耗了资源）
+    response = None
+    request_succeeded = False
+
+    try:
+        response = await call_next(request)
+        request_succeeded = True
+        logger.info(f"Request completed with status: {response.status_code}")
+    except Exception as e:
+        # 请求执行过程中发生异常，返回500错误
+        logger.error(f"Error during request execution: {e}", exc_info=True)
+        response = JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "detail": "处理请求时发生错误",
+                "message": str(e)
+            }
+        )
+
+    # 3. 扣除配额（无论请求成功还是失败）
+    # 原因：只要配额检查通过了，就说明资源已经被使用（模型加载、数据处理等）
+    try:
+        logger.info(f"Consuming quota: user={user_id}, type={quota_type}, amount={required_amount}")
+        remaining_after = await quota_manager.consume_quota(
+            user_id=user_id,
+            quota_type=quota_type,
+            amount=required_amount,
+            metadata={
+                "endpoint": path,
+                "method": method,
+                "description": description,
+                "patient_name": _extract_param(path, "patient_name") or _extract_param(path, "patient"),
+                "study_date": _extract_param(path, "study_date") or _extract_param(path, "date"),
+                "status_code": response.status_code if response else 500,
+                "success": request_succeeded
+            }
+        )
+
+        # 4. 添加配额信息到响应头
+        if remaining_after is not None:
+            response.headers["X-Quota-Type"] = quota_type
+            response.headers["X-Quota-Remaining"] = str(int(remaining_after))
+            response.headers["X-Quota-Used"] = str(required_amount)
+
+            logger.info(
+                f"Quota consumed: user={user_id}, type={quota_type}, "
+                f"amount={required_amount}, remaining={remaining_after}, "
+                f"status={response.status_code}"
+            )
+        else:
+            logger.error(f"Failed to consume quota, remaining=None")
+    except Exception as e:
+        logger.error(f"Error consuming quota: {e}", exc_info=True)
+        # 配额扣除失败不影响响应返回
+
+    return response
 
 
 def _match_endpoint(path: str) -> Optional[Dict[str, Any]]:

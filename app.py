@@ -180,6 +180,10 @@ def _resource_snapshot():
 origins = [
     "http://localhost:7500",
     "http://127.0.0.1:7500",
+    "http://localhost:8080",  # Vue CLI 默认端口
+    "http://127.0.0.1:8080",
+    "http://localhost:3000",  # 常用开发端口
+    "http://127.0.0.1:3000",
     "http://ai.bygpu.com:55304",
     "https://ai.bygpu.com:55304",
     "http://ai.bygpu.com",
@@ -353,6 +357,24 @@ async def upload_dicom_zip(
             os.remove(tmp_zip_path)
         except Exception:
             pass
+
+        # 5. 同步存储使用量到数据库（如果启用了配额）
+        if ENABLE_QUOTA and user_id:
+            try:
+                from integrations.storage_tracker import sync_storage_quota_to_db
+                from integrations.quota_manager import QuotaManager
+
+                # 异步同步存储配额
+                import asyncio
+                db_url = os.getenv("DATABASE_URL")
+                if db_url:
+                    qm = QuotaManager(db_url)
+                    asyncio.create_task(sync_storage_quota_to_db(user_id, qm, DATA_ROOT))
+                    logger.info(f"✅ Triggered storage quota sync for user {user_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to sync storage quota: {e}")
+                # 存储同步失败不影响上传
+
         return {"status": "ok", "upload_id": upload_id, "folder": folder_name, "message": "上传解压完成"}
     except Exception as e:
         upload_status[upload_id]["status"] = "aborted"

@@ -163,22 +163,22 @@ async def insert_default_quota_types():
             "type_key": "storage_dicom",
             "name": "DICOM存储",
             "description": "DICOM文件存储空间",
-            "unit": "GB",
-            "default_limit": 10
+            "unit": "MB",
+            "default_limit": 100
         },
         {
             "type_key": "storage_results",
             "name": "结果存储",
             "description": "处理结果存储空间",
-            "unit": "GB",
-            "default_limit": 5
+            "unit": "MB",
+            "default_limit": 50
         },
         {
             "type_key": "storage_usage",
             "name": "存储使用量",
             "description": "用户数据存储空间",
-            "unit": "GB",
-            "default_limit": 10
+            "unit": "MB",
+            "default_limit": 100
         },
         {
             "type_key": "api_calls_image_analysis",
