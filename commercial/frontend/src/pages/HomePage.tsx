@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ROUTES } from '@/utils/constants';
+import { ROUTES, IDOCTOR_APP_URL } from '@/utils/constants';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { SparklesCore } from '@/components/ui/sparkles';
 import {
@@ -18,6 +18,21 @@ import {
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+  
+  const handleFlaskAppRedirect = () => {
+    try {
+      // 在新窗口打开Flask应用
+      const newWindow = window.open(IDOCTOR_APP_URL, '_blank');
+      if (!newWindow) {
+        // 如果弹窗被阻止，提示用户
+        alert('请允许浏览器弹窗，然后再试一次');
+      }
+    } catch (error) {
+      console.error('跳转到分析服务失败:', error);
+      // 备用方案：直接跳转
+      window.location.href = IDOCTOR_APP_URL;
+    }
+  };
 
   const features = [
     {
@@ -163,9 +178,9 @@ const HomePage: React.FC = () => {
               <Button
                 size="lg"
                 className="text-lg px-8"
-                onClick={() => navigate(ROUTES.SUBSCRIPTION)}
+                onClick={handleFlaskAppRedirect}
               >
-                查看订阅计划
+                立即体验分析服务
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </div>
