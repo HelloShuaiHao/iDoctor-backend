@@ -56,7 +56,10 @@ class Settings(BaseSettings):
         "http://localhost:7500",
         "http://localhost:4200",
         "http://ai.bygpu.com:55303",
-        "http://ai.bygpu.com:55304"
+        "http://ai.bygpu.com:55304",  # 主前端（端口7500）
+        "http://ai.bygpu.com:55305",  # commercial前端（端口3000）
+        "https://ai.bygpu.com:55304",
+        "https://ai.bygpu.com:55305"
     ]
 
     @field_validator('CORS_ORIGINS', mode='before')
