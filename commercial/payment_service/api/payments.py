@@ -2,7 +2,8 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, desc
+from sqlalchemy.orm import selectinload
 from uuid import UUID, uuid4
 from decimal import Decimal
 
@@ -11,11 +12,12 @@ from commercial.shared.exceptions import ValidationError, ResourceNotFoundError
 from commercial.shared.config import settings
 from ..models.transaction import PaymentTransaction
 from ..models.subscription import UserSubscription
-from ..schemas.payment import PaymentCreateRequest, PaymentResponse
+from ..models.plan import SubscriptionPlan
+from ..schemas.payment import PaymentCreateRequest, PaymentResponse, PaymentHistoryItem
 from ..providers.alipay import AlipayProvider
 from ..providers.wechat import WechatProvider
 from ..providers.base import PaymentProvider
-from ..core.dependencies import get_optional_current_user_id
+from ..core.dependencies import get_optional_current_user_id, get_current_user_id
 
 router = APIRouter()
 
@@ -198,6 +200,91 @@ async def get_payment(
     )
 
 
+@router.get("/", response_model=List[PaymentHistoryItem])
+async def get_payment_history(
+    db: AsyncSession = Depends(get_db),
+    current_user_id: Optional[str] = Depends(get_optional_current_user_id),
+    status_filter: Optional[str] = None,
+    limit: int = 50
+):
+    """查询支付历史
+
+    Args:
+        status_filter: 按状态筛选（可选：pending/completed/failed/refunded）
+        limit: 返回记录数量限制（默认50条）
+
+    Returns:
+        支付历史记录列表
+    """
+    # 构建基础查询
+    stmt = select(
+        PaymentTransaction,
+        UserSubscription,
+        SubscriptionPlan
+    ).outerjoin(
+        UserSubscription, PaymentTransaction.subscription_id == UserSubscription.id
+    ).outerjoin(
+        SubscriptionPlan, UserSubscription.plan_id == SubscriptionPlan.id
+    )
+
+    # 如果有认证用户，只查询该用户的记录
+    if current_user_id:
+        try:
+            user_uuid = UUID(current_user_id)
+            stmt = stmt.where(PaymentTransaction.user_id == user_uuid)
+        except (ValueError, TypeError):
+            pass
+
+    # 按状态筛选
+    if status_filter:
+        stmt = stmt.where(PaymentTransaction.status == status_filter)
+
+    # 排序和限制
+    stmt = stmt.order_by(desc(PaymentTransaction.created_at)).limit(limit)
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    # 构建返回数据
+    history_items = []
+    for transaction, subscription, plan in rows:
+        # 生成计划名称
+        plan_name = None
+        description = None
+
+        if plan:
+            # 将 billing_cycle 转换为中文
+            cycle_map = {
+                "monthly": "月付",
+                "yearly": "年付",
+                "lifetime": "终身"
+            }
+            cycle_text = cycle_map.get(plan.billing_cycle, plan.billing_cycle)
+            plan_name = f"{plan.name} - {cycle_text}"
+            description = f"订阅{plan.name}套餐"
+
+            # 如果已退款，添加标记
+            if transaction.status == "refunded":
+                description += "（已退款）"
+        else:
+            description = "订阅支付"
+
+        history_items.append(PaymentHistoryItem(
+            id=transaction.id,
+            order_id=str(transaction.id),
+            amount=transaction.amount,
+            currency=transaction.currency,
+            payment_method=transaction.payment_method,
+            status=transaction.status,
+            created_at=transaction.created_at,
+            updated_at=transaction.updated_at,
+            plan_name=plan_name,
+            description=description
+        ))
+
+    return history_items
+
+
 @router.post("/{payment_id}/refund")
 async def refund_payment(
     payment_id: UUID,
@@ -209,25 +296,25 @@ async def refund_payment(
     stmt = select(PaymentTransaction).where(PaymentTransaction.id == payment_id)
     result = await db.execute(stmt)
     transaction = result.scalar_one_or_none()
-    
+
     if not transaction:
         raise ResourceNotFoundError("支付记录不存在")
-    
+
     if transaction.status != "completed":
         raise ValidationError("只能对已完成的支付进行退款")
-    
+
     if refund_amount > transaction.amount:
         raise ValidationError("退款金额不能超过支付金额")
-    
+
     provider = get_payment_provider(transaction.payment_method)
-    
+
     try:
         refund_result = await provider.refund(
             transaction_id=transaction.payment_provider_id,
             amount=refund_amount,
             reason=reason
         )
-        
+
         if refund_result.success:
             transaction.status = "refunded"
             transaction.extra_data = {
@@ -240,10 +327,10 @@ async def refund_payment(
                 }
             }
             await db.commit()
-            
+
             return {"success": True, "message": "退款成功", "refund_id": refund_result.refund_id}
         else:
             return {"success": False, "message": refund_result.message}
-            
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"退款失败: {str(e)}")

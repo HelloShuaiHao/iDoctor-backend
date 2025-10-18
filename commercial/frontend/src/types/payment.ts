@@ -32,3 +32,18 @@ export interface RefundRequest {
   refund_amount: number;
   reason: string;
 }
+
+// 支付历史记录项
+export interface PaymentRecord {
+  id: string;
+  order_id: string;
+  amount: number;
+  currency: string;
+  payment_method: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  plan_name?: string;
+  description?: string;
+  invoice_url?: string;
+}

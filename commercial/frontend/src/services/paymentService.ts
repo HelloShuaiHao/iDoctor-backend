@@ -3,6 +3,7 @@ import type {
   PaymentTransaction,
   CreatePaymentRequest,
   RefundRequest,
+  PaymentRecord,
 } from '@/types/payment';
 
 /**
@@ -33,6 +34,15 @@ export const paymentService = {
       `/payments/${paymentId}/refund`,
       data
     );
+    return response.data;
+  },
+
+  /**
+   * 获取支付历史
+   */
+  async getPaymentHistory(statusFilter?: string): Promise<PaymentRecord[]> {
+    const params = statusFilter ? { status_filter: statusFilter } : {};
+    const response = await paymentAPI.get<PaymentRecord[]>('/payments/', { params });
     return response.data;
   },
 

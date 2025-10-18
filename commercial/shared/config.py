@@ -35,7 +35,14 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # Email (SMTP) - pydantic-settings 会自动从环境变量或 .env 文件读取
+    # Email (SMTP)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "iDoctor"
+    EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES: int = 10
 
     # 服务端口
     AUTH_SERVICE_PORT: int = 9001
