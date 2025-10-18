@@ -184,12 +184,14 @@ origins = [
     "http://127.0.0.1:8080",
     "http://localhost:3000",  # 常用开发端口
     "http://127.0.0.1:3000",
-    "http://ai.bygpu.com:55304",
+    "http://ai.bygpu.com:55304",  # 主前端（端口7500）
     "https://ai.bygpu.com:55304",
+    "http://ai.bygpu.com:55305",  # commercial前端（端口3000）
+    "https://ai.bygpu.com:55305",
     "http://ai.bygpu.com",
     "https://ai.bygpu.com",
-    "http://ai.bygpu.com:55303",   
-    "https://ai.bygpu.com:55303", 
+    "http://ai.bygpu.com:55303",
+    "https://ai.bygpu.com:55303",
 ]
 logger.info("Adding CORS middleware...")
 app.add_middleware(
