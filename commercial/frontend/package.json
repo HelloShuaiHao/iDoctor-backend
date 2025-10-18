@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:prod": "vite build --mode production",
+    "build:skip-types": "vite build --mode production",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:prod": "./scripts/deploy-production.sh"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
