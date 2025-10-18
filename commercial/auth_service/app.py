@@ -11,7 +11,10 @@ app = FastAPI(
     description="通用认证服务，支持 JWT 和 API Key",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    swagger_ui_parameters={"syntaxHighlight.theme": "obsidian"},
+    swagger_ui_init_oauth={},
+    swagger_ui_dist_url="https://cdn.staticfile.org/swagger-ui/5.11.0/"
 )
 
 # CORS 中间件
