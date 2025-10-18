@@ -27,12 +27,10 @@ services:
       context: ..
       dockerfile: auth_service/Dockerfile
     container_name: idoctor_auth_service
+    env_file:
+      - ../.env  # 从 commercial/.env 读取敏感配置
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres123@postgres:5432/idoctor_commercial
-      JWT_SECRET_KEY: 9b74ca718d95b8caebe2c0f4c945d48d781692e30d6f8113e23c462abc7c0a62
-      JWT_REFRESH_SECRET_KEY: your-super-secret-refresh-key-change-in-production
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      REFRESH_TOKEN_EXPIRE_DAYS: 7
       ENVIRONMENT: development
     ports:
       - "9001:9001"

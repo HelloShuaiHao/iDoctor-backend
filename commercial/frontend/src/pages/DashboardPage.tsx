@@ -57,9 +57,8 @@ const DashboardPage: React.FC = () => {
       icon: Receipt,
       title: '支付记录',
       description: '查看您的支付历史和账单',
-      action: () => {},
+      action: () => navigate(ROUTES.PAYMENT_HISTORY),
       actionLabel: '查看记录',
-      status: '开发中',
       gradient: 'from-green-500 to-emerald-500',
     },
   ];

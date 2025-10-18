@@ -14,6 +14,7 @@ export interface RegisterRequest {
   email: string;
   username: string;
   password: string;
+  verification_code: string;
 }
 
 // 登录请求

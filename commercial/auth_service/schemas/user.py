@@ -14,6 +14,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """用户创建模型"""
     password: str = Field(..., min_length=8, max_length=100)
+    verification_code: str = Field(..., min_length=6, max_length=6, description="邮箱验证码")
 
 
 class UserUpdate(BaseModel):

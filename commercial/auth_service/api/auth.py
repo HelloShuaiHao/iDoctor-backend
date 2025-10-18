@@ -5,15 +5,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, text
 from commercial.shared.database import get_db
 from commercial.shared.exceptions import AuthenticationError, ValidationError
+from commercial.shared.config import settings
 from ..models.user import User
 from ..schemas.user import UserCreate, UserLogin, UserResponse
 from ..schemas.token import Token
+from ..schemas.verification import SendVerificationCodeRequest, VerifyEmailRequest, VerificationResponse
 from ..core.security import (
     get_password_hash,
     verify_password,
     create_access_token,
     create_refresh_token,
     verify_token
+)
+from ..core.email import (
+    send_verification_email,
+    generate_verification_code,
+    verification_store
 )
 
 logger = logging.getLogger(__name__)
@@ -52,22 +59,85 @@ async def assign_default_quotas(db: AsyncSession, user_id):
     logger.info(f"为用户 {user_id} 分配了 {len(quota_types)} 种配额")
 
 
+@router.post("/send-verification-code", response_model=VerificationResponse)
+async def send_verification_code(
+    request: SendVerificationCodeRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """发送邮箱验证码"""
+    # 检查邮箱是否已被注册
+    stmt = select(User).where(User.email == request.email)
+    result = await db.execute(stmt)
+    if result.scalar_one_or_none():
+        raise ValidationError("该邮箱已被注册")
+
+    # 生成验证码
+    code = generate_verification_code()
+
+    # 存储验证码
+    verification_store.set(
+        request.email,
+        code,
+        settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+    )
+
+    # 发送邮件
+    success = await send_verification_email(request.email, code)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="发送验证码失败，请稍后重试"
+        )
+
+    return VerificationResponse(
+        message=f"验证码已发送至 {request.email}，有效期 {settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES} 分钟",
+        success=True
+    )
+
+
+@router.post("/verify-email", response_model=VerificationResponse)
+async def verify_email_code(request: VerifyEmailRequest):
+    """验证邮箱验证码（可选，注册时也会验证）"""
+    is_valid = verification_store.verify(request.email, request.code)
+
+    if not is_valid:
+        raise ValidationError("验证码无效或已过期")
+
+    # 验证成功后重新存储，以便注册时使用（延长有效期）
+    verification_store.set(
+        request.email,
+        request.code,
+        settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+    )
+
+    return VerificationResponse(
+        message="邮箱验证成功",
+        success=True
+    )
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """用户注册"""
-    # 检查邮箱是否已存在
+    # 1. 验证邮箱验证码
+    is_valid = verification_store.verify(user_data.email, user_data.verification_code)
+    if not is_valid:
+        raise ValidationError("邮箱验证码无效或已过期，请重新获取")
+
+    # 2. 检查邮箱是否已存在
     stmt = select(User).where(User.email == user_data.email)
     result = await db.execute(stmt)
     if result.scalar_one_or_none():
         raise ValidationError("邮箱已被注册")
 
-    # 检查用户名是否已存在
+    # 3. 检查用户名是否已存在
     stmt = select(User).where(User.username == user_data.username)
     result = await db.execute(stmt)
     if result.scalar_one_or_none():
         raise ValidationError("用户名已被使用")
 
-    # 创建用户
+    # 4. 创建用户
     user = User(
         email=user_data.email,
         username=user_data.username,

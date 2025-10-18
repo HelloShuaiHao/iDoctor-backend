@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Email (SMTP) - pydantic-settings 会自动从环境变量或 .env 文件读取
+
     # 服务端口
     AUTH_SERVICE_PORT: int = 9001
     PAYMENT_SERVICE_PORT: int = 9002
@@ -65,9 +67,11 @@ class Settings(BaseSettings):
     ENABLE_QUOTA: bool = False
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # 从 commercial/.env 文件读取配置
+        env_file="../.env",
         case_sensitive=True,
-        env_parse_none_str='null'
+        env_parse_none_str='null',
+        extra='ignore'  # 忽略 .env 中未定义的额外字段
     )
 
 

@@ -1,4 +1,4 @@
-import { authAPI } from './api';
+import { idoctorAPI } from './api';
 import type {
   QuotaSummary,
   QuotaUsage,
@@ -9,7 +9,7 @@ import type {
 /**
  * 配额管理服务
  *
- * 注意：部分API端点可能尚未在后端实现，需要根据实际情况调整
+ * 使用 iDoctor 主应用的配额管理 API（/admin/quotas）
  */
 export const quotaService = {
   /**
@@ -17,13 +17,36 @@ export const quotaService = {
    */
   async getQuotaSummary(): Promise<QuotaSummary[]> {
     try {
-      const response = await authAPI.get<QuotaSummary[]>('/quota/summary');
-      return response.data;
-    } catch (error: any) {
-      // 如果API未实现，返回模拟数据
-      if (error.response?.status === 404) {
-        return getMockQuotaSummary();
+      const response = await idoctorAPI.get('/admin/quotas/users/me');
+
+      // 后端返回的是 UserQuotaSummary 格式
+      // 需要转换为前端需要的 QuotaSummary[] 格式
+      const data = response.data;
+
+      if (data.quotas && Array.isArray(data.quotas)) {
+        return data.quotas.map((quota: any) => ({
+          quota_type: {
+            id: quota.type_id || quota.type_key,
+            application_id: 'idoctor',
+            name: quota.name || quota.type_key,
+            description: quota.description || '',
+            unit: quota.unit || '次',
+            time_window: quota.time_window || 'month',
+            created_at: new Date().toISOString(),
+          },
+          limit: quota.limit,
+          used: quota.used,
+          remaining: quota.limit - quota.used,
+          percentage: quota.usage_percent || (quota.used / quota.limit) * 100,
+          time_window: quota.time_window || 'month',
+          window_start: new Date().toISOString(),
+          window_end: new Date().toISOString(),
+        }));
       }
+
+      return [];
+    } catch (error: any) {
+      console.error('Failed to load quota summary:', error);
       throw error;
     }
   },
@@ -34,23 +57,37 @@ export const quotaService = {
   async getQuotaUsageHistory(
     quotaTypeId?: string,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    limit?: number
   ): Promise<QuotaUsage[]> {
     try {
       const params = new URLSearchParams();
-      if (quotaTypeId) params.append('quota_type_id', quotaTypeId);
+      if (quotaTypeId) params.append('quota_type', quotaTypeId);
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
+      if (limit) params.append('limit', limit.toString());
 
-      const response = await authAPI.get<QuotaUsage[]>(
-        `/quota/usage?${params.toString()}`
+      const response = await idoctorAPI.get(
+        `/admin/quotas/usage-logs?${params.toString()}`
       );
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.status === 404) {
-        return [];
+
+      // 转换后端数据格式到前端格式
+      const logs = response.data;
+      if (Array.isArray(logs)) {
+        return logs.map((log: any) => ({
+          id: log.id,
+          user_id: log.user_id,
+          quota_type_id: log.quota_type,
+          amount: log.amount,
+          timestamp: log.created_at,
+          metadata: log.metadata || {},
+        }));
       }
-      throw error;
+
+      return [];
+    } catch (error: any) {
+      console.error('Failed to load usage history:', error);
+      return [];
     }
   },
 
@@ -62,15 +99,65 @@ export const quotaService = {
     days: number = 30
   ): Promise<UsageTrend> {
     try {
-      const response = await authAPI.get<UsageTrend>(
-        `/quota/trend/${quotaTypeId}?days=${days}`
+      const response = await idoctorAPI.get(
+        `/admin/quotas/statistics/${quotaTypeId}?days=${days}`
       );
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.status === 404) {
-        return getMockUsageTrend(quotaTypeId, days);
+
+      const data = response.data;
+
+      // 如果后端返回了数据，转换格式
+      if (data) {
+        return {
+          quota_type: {
+            id: quotaTypeId,
+            application_id: 'idoctor',
+            name: data.quota_type_name || quotaTypeId,
+            unit: data.unit || '次',
+            time_window: 'day',
+            created_at: new Date().toISOString(),
+          },
+          time_window: 'day',
+          data_points: data.data_points || [],
+          total_usage: data.total || 0,
+          average_usage: data.average || 0,
+          peak_usage: data.peak || 0,
+        };
       }
-      throw error;
+
+      // 如果没有数据，返回空趋势
+      return {
+        quota_type: {
+          id: quotaTypeId,
+          application_id: 'idoctor',
+          name: quotaTypeId,
+          unit: '次',
+          time_window: 'day',
+          created_at: new Date().toISOString(),
+        },
+        time_window: 'day',
+        data_points: [],
+        total_usage: 0,
+        average_usage: 0,
+        peak_usage: 0,
+      };
+    } catch (error: any) {
+      console.error('Failed to load usage trend:', error);
+      // 返回空数据而不是抛出错误
+      return {
+        quota_type: {
+          id: quotaTypeId,
+          application_id: 'idoctor',
+          name: quotaTypeId,
+          unit: '次',
+          time_window: 'day',
+          created_at: new Date().toISOString(),
+        },
+        time_window: 'day',
+        data_points: [],
+        total_usage: 0,
+        average_usage: 0,
+        peak_usage: 0,
+      };
     }
   },
 
@@ -79,116 +166,21 @@ export const quotaService = {
    */
   async getQuotaLimits(): Promise<QuotaLimit[]> {
     try {
-      const response = await authAPI.get<QuotaLimit[]>('/quota/limits');
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.status === 404) {
-        return [];
+      const response = await idoctorAPI.get('/admin/quotas/users/me');
+      const data = response.data;
+
+      if (data.quotas && Array.isArray(data.quotas)) {
+        return data.quotas.map((quota: any) => ({
+          quota_type_id: quota.type_id || quota.type_key,
+          limit: quota.limit,
+          time_window: quota.time_window || 'month',
+        }));
       }
-      throw error;
+
+      return [];
+    } catch (error: any) {
+      console.error('Failed to load quota limits:', error);
+      return [];
     }
   },
 };
-
-/**
- * 模拟数据 - 配额摘要
- * 用于后端API尚未实现时的演示
- */
-function getMockQuotaSummary(): QuotaSummary[] {
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  return [
-    {
-      quota_type: {
-        id: '1',
-        application_id: 'idoctor',
-        name: 'API 调用',
-        description: 'API 接口调用次数',
-        unit: '次',
-        time_window: 'month',
-        created_at: new Date().toISOString(),
-      },
-      limit: 10000,
-      used: 6543,
-      remaining: 3457,
-      percentage: 65.43,
-      time_window: 'month',
-      window_start: monthStart.toISOString(),
-      window_end: monthEnd.toISOString(),
-    },
-    {
-      quota_type: {
-        id: '2',
-        application_id: 'idoctor',
-        name: '存储空间',
-        description: '数据存储空间',
-        unit: 'GB',
-        time_window: 'lifetime',
-        created_at: new Date().toISOString(),
-      },
-      limit: 100,
-      used: 45.6,
-      remaining: 54.4,
-      percentage: 45.6,
-      time_window: 'lifetime',
-      window_start: new Date(2024, 0, 1).toISOString(),
-      window_end: new Date(2099, 11, 31).toISOString(),
-    },
-    {
-      quota_type: {
-        id: '3',
-        application_id: 'idoctor',
-        name: 'AI 分析',
-        description: 'AI 医学影像分析次数',
-        unit: '次',
-        time_window: 'day',
-        created_at: new Date().toISOString(),
-      },
-      limit: 50,
-      used: 23,
-      remaining: 27,
-      percentage: 46,
-      time_window: 'day',
-      window_start: new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString(),
-      window_end: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString(),
-    },
-  ];
-}
-
-/**
- * 模拟数据 - 使用趋势
- */
-function getMockUsageTrend(quotaTypeId: string, days: number): UsageTrend {
-  const dataPoints = [];
-  const now = new Date();
-
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i);
-    dataPoints.push({
-      timestamp: date.toISOString(),
-      value: Math.floor(Math.random() * 300) + 100,
-      label: date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }),
-    });
-  }
-
-  const totalUsage = dataPoints.reduce((sum, point) => sum + point.value, 0);
-
-  return {
-    quota_type: {
-      id: quotaTypeId,
-      application_id: 'idoctor',
-      name: 'API 调用',
-      unit: '次',
-      time_window: 'day',
-      created_at: new Date().toISOString(),
-    },
-    time_window: 'day',
-    data_points: dataPoints,
-    total_usage: totalUsage,
-    average_usage: Math.floor(totalUsage / days),
-    peak_usage: Math.max(...dataPoints.map(p => p.value)),
-  };
-}

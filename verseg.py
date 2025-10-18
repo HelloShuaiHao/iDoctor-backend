@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import os
+import torch
 from pipeline_logging import write_log
 from detectron2.config import get_cfg
 from detectron2.engine import DefaultPredictor
@@ -16,6 +17,13 @@ def get_predictor(config_file, weights, num_classes, score_thresh=0.5):
     cfg.MODEL.WEIGHTS = weights
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = score_thresh
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes
+
+    # Set device to CPU if CUDA is not available
+    if torch.cuda.is_available():
+        cfg.MODEL.DEVICE = "cuda"
+    else:
+        cfg.MODEL.DEVICE = "cpu"
+
     return DefaultPredictor(cfg)
 
 

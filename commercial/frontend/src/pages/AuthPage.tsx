@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Mail, Lock, User, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, User, AlertCircle, CheckCircle2, Send } from 'lucide-react';
 import { ROUTES } from '@/utils/constants';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { authService } from '@/services/authService';
 
 interface AuthPageProps {
   mode?: 'login' | 'register';
@@ -25,6 +26,7 @@ interface RegisterForm {
   email: string;
   password: string;
   confirmPassword: string;
+  verificationCode: string;
 }
 
 interface FormErrors {
@@ -32,6 +34,7 @@ interface FormErrors {
   email?: string;
   password?: string;
   confirmPassword?: string;
+  verificationCode?: string;
 }
 
 const AuthPage: React.FC<AuthPageProps> = ({ mode = 'login' }) => {
@@ -45,6 +48,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode = 'login' }) => {
     email: '',
     password: '',
     confirmPassword: '',
+    verificationCode: '',
   });
 
   const [loginErrors, setLoginErrors] = useState<FormErrors>({});
@@ -55,9 +59,71 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode = 'login' }) => {
   }>({ type: null, message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 验证码相关状态
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [codeMessage, setCodeMessage] = useState<{
+    type: 'success' | 'error' | null;
+    message: string;
+  }>({ type: null, message: '' });
+
+  // 倒计时效果
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
+  };
+
+  // 发送验证码
+  const handleSendVerificationCode = async () => {
+    // 先验证邮箱格式
+    if (!registerForm.email) {
+      setRegisterErrors({ ...registerErrors, email: '请输入邮箱' });
+      return;
+    }
+
+    if (!validateEmail(registerForm.email)) {
+      setRegisterErrors({ ...registerErrors, email: '请输入有效的邮箱地址' });
+      return;
+    }
+
+    setIsSendingCode(true);
+    setCodeMessage({ type: null, message: '' });
+
+    try {
+      const result = await authService.sendVerificationCode(registerForm.email);
+      setCodeMessage({
+        type: 'success',
+        message: result.message || '验证码已发送，请查收邮件',
+      });
+      setCountdown(60); // 60秒倒计时
+    } catch (error: any) {
+      console.error('Send verification code error:', error);
+
+      let errorMessage = '发送验证码失败，请稍后重试';
+
+      if (error.response?.data) {
+        const data = error.response.data;
+        if (typeof data.detail === 'string') {
+          errorMessage = data.detail;
+        } else if (Array.isArray(data.detail)) {
+          errorMessage = data.detail.map((err: any) => err.msg).join(', ');
+        }
+      }
+
+      setCodeMessage({
+        type: 'error',
+        message: errorMessage,
+      });
+    } finally {
+      setIsSendingCode(false);
+    }
   };
 
   const validateLoginForm = (): boolean => {
@@ -90,6 +156,12 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode = 'login' }) => {
       errors.email = '请输入邮箱';
     } else if (!validateEmail(registerForm.email)) {
       errors.email = '请输入有效的邮箱地址';
+    }
+
+    if (!registerForm.verificationCode) {
+      errors.verificationCode = '请输入验证码';
+    } else if (registerForm.verificationCode.length !== 6) {
+      errors.verificationCode = '验证码必须是6位数字';
     }
 
     if (!registerForm.password) {
@@ -173,6 +245,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode = 'login' }) => {
         username: registerForm.username,
         email: registerForm.email,
         password: registerForm.password,
+        verification_code: registerForm.verificationCode,
       });
 
       setSubmitStatus({
@@ -362,6 +435,64 @@ const AuthPage: React.FC<AuthPageProps> = ({ mode = 'login' }) => {
                     <p className="text-sm text-destructive flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {registerErrors.email}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="register-verification-code">邮箱验证码</Label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="register-verification-code"
+                        type="text"
+                        placeholder="请输入6位验证码"
+                        className={`pl-10 ${registerErrors.verificationCode ? 'border-destructive' : ''}`}
+                        value={registerForm.verificationCode}
+                        onChange={(e) => {
+                          setRegisterForm({ ...registerForm, verificationCode: e.target.value });
+                          setRegisterErrors({ ...registerErrors, verificationCode: undefined });
+                        }}
+                        disabled={isSubmitting}
+                        maxLength={6}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleSendVerificationCode}
+                      disabled={isSendingCode || countdown > 0 || !registerForm.email}
+                      className="whitespace-nowrap"
+                    >
+                      {isSendingCode ? (
+                        '发送中...'
+                      ) : countdown > 0 ? (
+                        `${countdown}s`
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4 mr-1" />
+                          发送验证码
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  {registerErrors.verificationCode && (
+                    <p className="text-sm text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {registerErrors.verificationCode}
+                    </p>
+                  )}
+                  {codeMessage.type && (
+                    <p className={`text-sm flex items-center gap-1 ${
+                      codeMessage.type === 'success' ? 'text-green-600' : 'text-destructive'
+                    }`}>
+                      {codeMessage.type === 'success' ? (
+                        <CheckCircle2 className="h-3 w-3" />
+                      ) : (
+                        <AlertCircle className="h-3 w-3" />
+                      )}
+                      {codeMessage.message}
                     </p>
                   )}
                 </div>

@@ -60,24 +60,31 @@ class UsageStatistics(BaseModel):
 # ==================== Dependency: Get DB Session ====================
 async def get_db_session():
     """Get database session for admin operations
-    
+
     Note: In production, this should be properly injected from the app
     """
     # This will be injected by the main application
     # For now, we'll rely on the quota_manager's engine
-    from commercial.integrations.quota_manager import QuotaManager
+    try:
+        from integrations.quota_manager import QuotaManager
+    except ImportError:
+        from commercial.integrations.quota_manager import QuotaManager
+
     import os
-    
+
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database not configured"
         )
-    
+
     manager = QuotaManager(db_url)
     async with manager.async_session() as session:
-        yield session
+        try:
+            yield session
+        finally:
+            await session.close()
 
 
 # ==================== Admin Auth Dependency ====================
@@ -100,16 +107,49 @@ async def verify_admin(request) -> str:
 
 # ==================== Endpoints ====================
 
+@router.get("/users/me", response_model=UserQuotaSummary)
+async def get_current_user_quotas(
+    request: Request,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """Get all quota information for the current authenticated user
+
+    Returns current quota limits, usage, and remaining amounts for all quota types.
+    Uses the user_id from the authenticated request state.
+    """
+    # Get user_id from request state (set by auth middleware)
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        logger.error("No user_id in request.state - authentication middleware not working")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+
+    logger.info(f"Getting quotas for authenticated user: {user_id} (type: {type(user_id)})")
+    return await _get_user_quotas_internal(str(user_id), session)
+
+
 @router.get("/users/{user_id}", response_model=UserQuotaSummary)
 async def get_user_quotas(
     user_id: str,
     session: AsyncSession = Depends(get_db_session)
 ):
     """Get all quota information for a specific user
-    
+
     Returns current quota limits, usage, and remaining amounts for all quota types.
     """
+    return await _get_user_quotas_internal(user_id, session)
+
+
+async def _get_user_quotas_internal(
+    user_id: str,
+    session: AsyncSession
+) -> UserQuotaSummary:
+    """Internal function to get user quotas (shared by /me and /{user_id} endpoints)"""
     try:
+        logger.info(f"Fetching quotas for user_id: {user_id}")
+
         query = text("""
         SELECT
             qt.type_key,
@@ -117,7 +157,7 @@ async def get_user_quotas(
             qt.unit,
             ql.limit_amount,
             ql.used_amount,
-            CASE 
+            CASE
                 WHEN ql.limit_amount = -1 THEN -1
                 ELSE ql.limit_amount - ql.used_amount
             END AS remaining,
@@ -131,16 +171,19 @@ async def get_user_quotas(
         WHERE ql.user_id = :user_id
         ORDER BY qt.type_key
         """)
-        
+
         result = await session.execute(query, {"user_id": user_id})
         rows = result.fetchall()
-        
+
+        logger.info(f"Found {len(rows)} quota records for user {user_id}")
+
         if not rows:
+            logger.warning(f"No quotas found for user {user_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No quotas found for user {user_id}"
             )
-        
+
         quotas = []
         for row in rows:
             type_key, name, unit, limit, used, remaining, usage_percent = row
@@ -153,13 +196,13 @@ async def get_user_quotas(
                 remaining=float(remaining) if remaining != -1 else -1,
                 usage_percent=float(usage_percent)
             ))
-        
+
         return UserQuotaSummary(
             user_id=user_id,
             total_quotas=len(quotas),
             quotas=quotas
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
