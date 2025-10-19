@@ -70,12 +70,31 @@ def test_smtp_connection():
     print("-" * 70)
     try:
         server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30)
+        server.set_debuglevel(1)  # 开启调试信息
         print(f"✅ SMTP 连接已建立")
     except smtplib.SMTPConnectError as e:
         print(f"❌ SMTP 连接错误: {e}")
+        print()
+        print("可能的原因:")
+        print("  1. 服务器 IP 被 Gmail 标记为可疑")
+        print("  2. 防火墙规则阻止")
+        print("  3. Gmail 服务器暂时不可用")
         return False
     except Exception as e:
-        print(f"❌ 未知错误: {e}")
+        print(f"❌ 未知错误: {type(e).__name__}: {e}")
+        print()
+        # 尝试原始 socket 连接获取更多信息
+        print("尝试原始 socket 连接诊断...")
+        try:
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(10)
+            sock.connect((SMTP_HOST, SMTP_PORT))
+            response = sock.recv(1024).decode('utf-8', errors='ignore')
+            print(f"服务器响应: {response.strip()}")
+            sock.close()
+        except Exception as socket_err:
+            print(f"Socket 连接也失败: {socket_err}")
         return False
     print()
 
