@@ -65,7 +65,9 @@ server {
     location /api/auth/ {
         # 使用变量让 Nginx 动态解析，避免启动时解析失败
         set $auth_backend ${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT};
-        proxy_pass http://$auth_backend/;
+        # 去掉 /api/auth/ 前缀（使用变量时必须手动rewrite）
+        rewrite ^/api/auth/(.*)$ /$1 break;
+        proxy_pass http://$auth_backend;
         proxy_http_version 1.1;
 
         # 保留原始请求信息
@@ -87,7 +89,9 @@ server {
     location /api/payment/ {
         # 使用变量让 Nginx 动态解析，避免启动时解析失败
         set $payment_backend ${PAYMENT_SERVICE_HOST}:${PAYMENT_SERVICE_PORT};
-        proxy_pass http://$payment_backend/;
+        # 去掉 /api/payment/ 前缀（使用变量时必须手动rewrite）
+        rewrite ^/api/payment/(.*)$ /$1 break;
+        proxy_pass http://$payment_backend;
         proxy_http_version 1.1;
 
         proxy_set_header Host $host;
@@ -106,7 +110,9 @@ server {
     location /api/idoctor/ {
         # 使用变量让 Nginx 动态解析，避免启动时解析失败
         set $idoctor_backend ${IDOCTOR_API_HOST}:${IDOCTOR_API_PORT};
-        proxy_pass http://$idoctor_backend/;
+        # 去掉 /api/idoctor/ 前缀（使用变量时必须手动rewrite）
+        rewrite ^/api/idoctor/(.*)$ /$1 break;
+        proxy_pass http://$idoctor_backend;
         proxy_http_version 1.1;
 
         proxy_set_header Host $host;

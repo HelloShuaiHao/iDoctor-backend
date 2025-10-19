@@ -4,3 +4,6 @@ pycryptodome
 python-jose[cryptography]
 pydantic[email]
 alipay-sdk-python
+jose
+pydantic_settings
+asyncpg
