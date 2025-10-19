@@ -63,6 +63,18 @@ server {
 
     # 认证服务 API - 认证相关
     location /api/auth/ {
+        # 处理 OPTIONS 预检请求（必须在 rewrite 之前）
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
         # 使用变量让 Nginx 动态解析，避免启动时解析失败
         set $auth_backend ${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT};
         # 去掉 /api/ 前缀，保留 /auth/（使用变量时必须手动rewrite）
