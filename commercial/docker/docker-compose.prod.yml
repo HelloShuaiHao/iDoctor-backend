@@ -1,0 +1,37 @@
+# Docker Compose 生产环境覆盖配置
+# 使用方法: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  # 生产环境的 Nginx 配置
+  frontend_nginx:
+    environment:
+      # 生产环境配置（通过 .env.prod 文件注入）
+      NGINX_PORT: ${NGINX_PORT:-3000}
+      NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:-ai.bygpu.com}
+      AUTH_SERVICE_HOST: auth_service
+      AUTH_SERVICE_PORT: 9001
+      PAYMENT_SERVICE_HOST: payment_service
+      PAYMENT_SERVICE_PORT: 9002
+      # 生产环境中，主应用可能在宿主机或另一个网络
+      IDOCTOR_API_HOST: ${IDOCTOR_API_HOST:-host.docker.internal}
+      IDOCTOR_API_PORT: ${IDOCTOR_API_PORT:-4200}
+    ports:
+      # 根据生产端口映射（如 55305:3000）
+      - "${NGINX_EXTERNAL_PORT:-55305}:${NGINX_PORT:-3000}"
+
+  # 生产环境数据库使用持久化卷
+  postgres:
+    volumes:
+      - /var/lib/idoctor/postgres_data:/var/lib/postgresql/data
+
+  # 生产环境认证服务配置
+  auth_service:
+    environment:
+      ENVIRONMENT: production
+
+  # 生产环境支付服务配置
+  payment_service:
+    environment:
+      ENVIRONMENT: production

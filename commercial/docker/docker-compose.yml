@@ -83,8 +83,46 @@ services:
       - commercial_network
     restart: "no"
 
+  # Nginx 前端服务
+  frontend_nginx:
+    build:
+      context: ../nginx
+      dockerfile: Dockerfile
+    container_name: idoctor_commercial_nginx
+    environment:
+      # 本地开发环境配置
+      NGINX_PORT: 3000
+      NGINX_SERVER_NAME: localhost
+      AUTH_SERVICE_HOST: auth_service
+      AUTH_SERVICE_PORT: 9001
+      PAYMENT_SERVICE_HOST: payment_service
+      PAYMENT_SERVICE_PORT: 9002
+      IDOCTOR_API_HOST: host.docker.internal  # Docker内访问宿主机
+      IDOCTOR_API_PORT: 4200
+      STATIC_ROOT: /usr/share/nginx/html
+    volumes:
+      # 挂载前端构建产物
+      - ../frontend/dist:/usr/share/nginx/html:ro
+      # 挂载日志（可选）
+      - nginx_logs:/var/log/nginx
+    ports:
+      - "3000:3000"
+    depends_on:
+      - auth_service
+      - payment_service
+    networks:
+      - commercial_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
 volumes:
   idoctor_commercial_postgres_data:
+    driver: local
+  nginx_logs:
     driver: local
 
 networks:

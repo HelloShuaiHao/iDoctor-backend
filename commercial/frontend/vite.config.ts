@@ -30,6 +30,11 @@ export default defineConfig({
         target: 'http://localhost:9002',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/payment/, '')
+      },
+      '/api/idoctor': {
+        target: 'http://localhost:4200',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/idoctor/, '')
       }
     }
   },

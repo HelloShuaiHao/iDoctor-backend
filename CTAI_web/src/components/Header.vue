@@ -209,7 +209,9 @@ export default {
         case 'subscription':
           // 跳转到商业前端的订阅管理页面
           const token = localStorage.getItem('access_token');
-          window.location.href = `http://localhost:3000/#/subscription?token=${token}`;
+          const commercialUrl = process.env.VUE_APP_COMMERCIAL_URL || 'http://localhost:3000';
+          // 使用 Browser Router 格式（不使用 hash）
+          window.location.href = `${commercialUrl}/subscription?token=${token}`;
           break;
         case 'logout':
           // 退出登录

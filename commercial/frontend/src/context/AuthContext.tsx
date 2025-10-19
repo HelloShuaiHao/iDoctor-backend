@@ -25,6 +25,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // 初始化：检查是否已登录
   useEffect(() => {
     const initAuth = async () => {
+      // 1. 检查 URL 参数中的 token（从 CTAI_web 跳转过来）
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlToken = searchParams.get('token');
+
+      if (urlToken) {
+        // 保存 token 到 localStorage
+        localStorage.setItem('access_token', urlToken);
+        // 清除 URL 参数，避免刷新时重复处理
+        window.history.replaceState({}, '', window.location.pathname);
+        console.log('从 URL 参数获取到 token，已保存到 localStorage');
+      }
+
+      // 2. 正常的认证检查
       if (authService.isAuthenticated()) {
         try {
           const userData = await authService.getCurrentUser();
