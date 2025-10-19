@@ -68,7 +68,7 @@ authAPI.interceptors.response.use(
       if (refreshToken) {
         try {
           const response = await axios.post(
-            `${import.meta.env.VITE_AUTH_API_URL}/refresh`,
+            `${import.meta.env.VITE_AUTH_API_URL}/auth/refresh`,
             {},
             {
               headers: {
@@ -110,7 +110,7 @@ paymentAPI.interceptors.response.use(
       if (refreshToken) {
         try {
           const response = await axios.post(
-            `${import.meta.env.VITE_AUTH_API_URL}/refresh`,
+            `${import.meta.env.VITE_AUTH_API_URL}/auth/refresh`,
             {},
             {
               headers: {
@@ -161,7 +161,7 @@ idoctorAPI.interceptors.response.use(
       if (refreshToken) {
         try {
           const response = await axios.post(
-            `${import.meta.env.VITE_AUTH_API_URL}/refresh`,
+            `${import.meta.env.VITE_AUTH_API_URL}/auth/refresh`,
             {},
             {
               headers: {

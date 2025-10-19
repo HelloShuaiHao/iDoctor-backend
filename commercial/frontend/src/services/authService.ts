@@ -18,7 +18,7 @@ export const authService = {
    */
   async sendVerificationCode(email: string): Promise<{ message: string; success: boolean }> {
     const response = await authAPI.post<{ message: string; success: boolean }>(
-      '/send-verification-code',
+      '/auth/send-verification-code',
       { email }
     );
     return response.data;
@@ -29,7 +29,7 @@ export const authService = {
    */
   async verifyEmail(email: string, code: string): Promise<{ message: string; success: boolean }> {
     const response = await authAPI.post<{ message: string; success: boolean }>(
-      '/verify-email',
+      '/auth/verify-email',
       { email, code }
     );
     return response.data;
@@ -39,7 +39,7 @@ export const authService = {
    * 用户注册
    */
   async register(data: RegisterRequest): Promise<User> {
-    const response = await authAPI.post<User>('/register', data);
+    const response = await authAPI.post<User>('/auth/register', data);
     return response.data;
   },
 
@@ -47,7 +47,7 @@ export const authService = {
    * 用户登录
    */
   async login(data: LoginRequest): Promise<TokenResponse> {
-    const response = await authAPI.post<TokenResponse>('/login', data);
+    const response = await authAPI.post<TokenResponse>('/auth/login', data);
     // 保存 Token 到 localStorage
     localStorage.setItem('access_token', response.data.access_token);
     localStorage.setItem('refresh_token', response.data.refresh_token);
@@ -58,7 +58,7 @@ export const authService = {
    * 刷新 Token
    */
   async refreshToken(): Promise<TokenResponse> {
-    const response = await authAPI.post<TokenResponse>('/refresh');
+    const response = await authAPI.post<TokenResponse>('/auth/refresh');
     localStorage.setItem('access_token', response.data.access_token);
     localStorage.setItem('refresh_token', response.data.refresh_token);
     return response.data;
