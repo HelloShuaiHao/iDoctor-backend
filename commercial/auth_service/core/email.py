@@ -156,22 +156,27 @@ async def send_verification_email(email: str, code: str) -> bool:
         # 发送邮件
         if settings.SMTP_USE_SSL:
             # 使用 SSL (通常用于465端口，如QQ邮箱)
-            import ssl
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(
-                settings.SMTP_HOST,
-                settings.SMTP_PORT,
-                timeout=30,
-                context=context
-            ) as server:
+            server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+            try:
                 server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
                 server.send_message(msg)
+            finally:
+                try:
+                    server.quit()
+                except:
+                    pass
         else:
             # 使用 STARTTLS (通常用于587端口，如Gmail)
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
+            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+            try:
                 server.starttls()
                 server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
                 server.send_message(msg)
+            finally:
+                try:
+                    server.quit()
+                except:
+                    pass
 
         logger.info(f"✅ 验证码邮件已发送: {email}")
         return True
