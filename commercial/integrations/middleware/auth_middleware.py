@@ -41,6 +41,7 @@ async def auth_middleware(request: Request, call_next):
     """
     path = request.url.path
     method = request.method
+    logger.debug(f"Auth middleware: path={path}, method={method}")
 
     # 跳过CORS预检请求 (OPTIONS)
     if method == "OPTIONS":
@@ -103,6 +104,7 @@ async def auth_middleware(request: Request, call_next):
         request.state.is_superuser = payload.get("is_superuser", False)
 
         logger.info(f"Authenticated user {user_email} ({user_id}) accessing {path}")
+        logger.debug(f"Set request.state.user_id = {user_id}")
 
     except ValueError as e:
         logger.warning(f"Invalid token for {path}: {str(e)}")

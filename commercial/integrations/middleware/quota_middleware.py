@@ -39,18 +39,13 @@ STORAGE_ENDPOINTS = {
 }
 
 # 无需配额检查的路径（查询类操作）
+# 注意：大部分 GET 请求会被自动跳过（见下方 method != "POST" 检查）
+# 这里只列出不需要认证的路径
 EXEMPT_PATHS = {
     "/health",
     "/docs",
     "/redoc",
     "/openapi.json",
-    "/list_patients",
-    "/task_status",
-    "/get_key_results",
-    "/get_image",
-    "/get_output_image",
-    "/debug_log",
-    "/generate_sagittal",  # 仅生成预览，不算配额
 }
 
 # 初始化配额管理器

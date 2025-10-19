@@ -524,7 +524,8 @@ def _run_main_process(task_id: str, input_folder: str, output_folder: str):
 def list_patients(request: Request):
     """列出患者（支持用户隔离）"""
     user_id = getattr(request.state, "user_id", None)
-    
+    logger.info(f"list_patients called: user_id={user_id}, ENABLE_AUTH={ENABLE_AUTH}")
+
     if user_id and ENABLE_AUTH:
         # 认证模式：只列出该用户的患者
         user_data_root = os.path.join(DATA_ROOT, str(user_id))
