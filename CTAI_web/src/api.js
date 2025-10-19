@@ -140,8 +140,12 @@ export async function getKeyResults(patient_name, study_date) {
 //添加时间戳和 token（用于认证）
 export function getImageUrl(patient_name, study_date, filename) {
     const token = localStorage.getItem('access_token');
-    const tokenParam = token ? `&token=${token}` : '';
-    return `${BASE_URL}/get_image/${encodeURIComponent(patient_name)}/${study_date}/${filename}?t=${Date.now()}${tokenParam}`;
+    const params = new URLSearchParams();
+    params.append('t', Date.now());
+    if (token) {
+        params.append('token', token);
+    }
+    return `${BASE_URL}/get_image/${encodeURIComponent(patient_name)}/${study_date}/${filename}?${params.toString()}`;
 }
 
 // ...existing code...
@@ -168,8 +172,10 @@ export async function continueAfterL3(patient_name, study_date) {
 // 获取 L3 相关图片
 export function getL3ImageUrl(patient_name, study_date, folder, filename) {
     const token = localStorage.getItem('access_token');
-    const tokenParam = token ? `?token=${token}` : '';
-    return `${BASE_URL}/get_output_image/${encodeURIComponent(patient_name)}/${study_date}/${folder}/${filename}${tokenParam}`;
+    if (token) {
+        return `${BASE_URL}/get_output_image/${encodeURIComponent(patient_name)}/${study_date}/${folder}/${filename}?token=${token}`;
+    }
+    return `${BASE_URL}/get_output_image/${encodeURIComponent(patient_name)}/${study_date}/${folder}/${filename}`;
 }
 
 // 生成侧视图（sagittal）

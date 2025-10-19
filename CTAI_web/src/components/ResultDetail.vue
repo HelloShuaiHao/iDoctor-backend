@@ -479,7 +479,9 @@ export default {
     },
     versionedL3Url(folder, filename) {
       const base = getL3ImageUrl(this.patient, this.date, folder, filename);
-      return `${base}?t=${Date.now()}`;
+      // 如果URL已经有查询参数（token），用 & 连接，否则用 ?
+      const separator = base.includes('?') ? '&' : '?';
+      return `${base}${separator}t=${Date.now()}`;
     },
   },
 };
