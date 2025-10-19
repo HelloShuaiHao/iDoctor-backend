@@ -94,7 +94,8 @@ export default {
 
         this.loading = true
         try {
-          const response = await this.$http.post('http://localhost:9001/auth/login', {
+          const authBaseUrl = process.env.VUE_APP_AUTH_BASE_URL || 'http://localhost:9001'
+          const response = await this.$http.post(`${authBaseUrl}/auth/login`, {
             username_or_email: this.loginForm.username,
             password: this.loginForm.password
           })

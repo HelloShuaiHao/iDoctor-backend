@@ -77,7 +77,8 @@ axios.interceptors.response.use(
       ).then(() => {
         // 跳转到商业前端的订阅页面
         const token = localStorage.getItem('access_token')
-        window.location.href = `http://localhost:3000/#/subscription?token=${token}`
+        const commercialUrl = process.env.VUE_APP_COMMERCIAL_URL || 'http://localhost:3000'
+        window.location.href = `${commercialUrl}/#/subscription?token=${token}`
       }).catch(() => {
         // 用户取消
       })

@@ -264,7 +264,8 @@ export default {
     },
     async checkQuota() {
       try {
-        const response = await this.$http.get('http://localhost:4200/admin/quotas/users/me');
+        const baseUrl = process.env.VUE_APP_BASE_URL || 'http://localhost:4200'
+        const response = await this.$http.get(`${baseUrl}/admin/quotas/users/me`);
         const quota = response.data.quotas.find(q => q.type_key === 'api_calls_full_process');
 
         if (!quota) {
@@ -286,7 +287,8 @@ export default {
           ).then(() => {
             // 跳转到商业前端订阅页面
             const token = localStorage.getItem('access_token');
-            window.location.href = `http://localhost:3000/#/subscription?token=${token}`;
+            const commercialUrl = process.env.VUE_APP_COMMERCIAL_URL || 'http://localhost:3000';
+            window.location.href = `${commercialUrl}/#/subscription?token=${token}`;
           }).catch(() => {
             // 用户取消，不做任何操作
           });

@@ -106,7 +106,8 @@ export default {
     },
     async loadUserInfo() {
       try {
-        const response = await this.$http.get('http://localhost:9001/users/me');
+        const authBaseUrl = process.env.VUE_APP_AUTH_BASE_URL || 'http://localhost:9001'
+        const response = await this.$http.get(`${authBaseUrl}/users/me`);
         this.username = response.data.username;
       } catch (error) {
         console.error('Failed to load user info:', error);
@@ -119,7 +120,8 @@ export default {
     },
     async loadQuota() {
       try {
-        const response = await this.$http.get('http://localhost:4200/admin/quotas/users/me');
+        const baseUrl = process.env.VUE_APP_BASE_URL || 'http://localhost:4200'
+        const response = await this.$http.get(`${baseUrl}/admin/quotas/users/me`);
 
         // 存储所有配额信息
         this.allQuotas = response.data.quotas || [];
