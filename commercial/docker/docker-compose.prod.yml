@@ -26,12 +26,12 @@ services:
     volumes:
       - /var/lib/idoctor/postgres_data:/var/lib/postgresql/data
 
-  # 生产环境认证服务配置
+  # 生产环境认证服务配置（临时使用 development 以便 SMTP 失败时显示验证码）
   auth_service:
     environment:
-      ENVIRONMENT: production
+      ENVIRONMENT: development
 
   # 生产环境支付服务配置
   payment_service:
     environment:
-      ENVIRONMENT: production
+      ENVIRONMENT: development
