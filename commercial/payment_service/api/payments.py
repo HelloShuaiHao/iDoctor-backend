@@ -21,6 +21,13 @@ from ..core.dependencies import get_optional_current_user_id, get_current_user_i
 
 router = APIRouter()
 
+
+@router.get("/health")
+async def health_check():
+    """健康检查"""
+    return {"status": "ok", "service": "payment"}
+
+
 # 支付提供商配置
 PAYMENT_PROVIDERS = {
     "alipay": AlipayProvider({

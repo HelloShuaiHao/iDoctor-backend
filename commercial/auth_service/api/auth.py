@@ -28,6 +28,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/health")
+async def health_check():
+    """健康检查"""
+    return {"status": "ok", "service": "auth"}
+
+
 async def assign_default_quotas(db: AsyncSession, user_id):
     """为新用户分配默认配额"""
     # 获取所有激活的配额类型
