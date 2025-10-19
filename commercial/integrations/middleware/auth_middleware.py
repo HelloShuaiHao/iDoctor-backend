@@ -55,8 +55,14 @@ async def auth_middleware(request: Request, call_next):
         if path.startswith(prefix):
             return await call_next(request)
 
-    # 提取 Authorization header
+    # 提取 Authorization header 或 URL 参数中的 token
     auth_header = request.headers.get("Authorization")
+
+    # 如果没有 Authorization header，尝试从 URL 参数获取 token（用于图片等无法设置 header 的请求）
+    if not auth_header:
+        token_param = request.query_params.get("token")
+        if token_param:
+            auth_header = f"Bearer {token_param}"
 
     if not auth_header:
         logger.warning(f"Unauthorized request to {path}: No Authorization header")
