@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # Email (SMTP)
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
+    SMTP_USE_SSL: bool = False  # QQ邮箱使用465端口时需要设置为True
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
