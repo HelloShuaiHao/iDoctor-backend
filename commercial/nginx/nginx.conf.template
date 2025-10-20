@@ -99,6 +99,18 @@ server {
 
     # 认证服务 API - 用户管理
     location /api/users/ {
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
         set $auth_backend ${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT};
         rewrite ^/api/(.*) /$1 break;
         proxy_pass http://$auth_backend;
@@ -119,6 +131,18 @@ server {
 
     # 认证服务 API - API密钥管理
     location /api/api-keys/ {
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
         set $auth_backend ${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT};
         rewrite ^/api/(.*) /$1 break;
         proxy_pass http://$auth_backend;
@@ -139,6 +163,18 @@ server {
 
     # 支付服务 API - 支付交易
     location /api/payments/ {
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
         # 使用变量让 Nginx 动态解析，避免启动时解析失败
         set $payment_backend ${PAYMENT_SERVICE_HOST}:${PAYMENT_SERVICE_PORT};
         # 去掉 /api/ 前缀，保留 /payments/（使用变量时必须手动rewrite）
@@ -161,6 +197,18 @@ server {
 
     # 支付服务 API - 订阅计划
     location /api/plans/ {
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
         set $payment_backend ${PAYMENT_SERVICE_HOST}:${PAYMENT_SERVICE_PORT};
         rewrite ^/api/(.*) /$1 break;
         proxy_pass http://$payment_backend;
@@ -181,6 +229,18 @@ server {
 
     # 支付服务 API - 订阅管理
     location /api/subscriptions/ {
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
         set $payment_backend ${PAYMENT_SERVICE_HOST}:${PAYMENT_SERVICE_PORT};
         rewrite ^/api/(.*) /$1 break;
         proxy_pass http://$payment_backend;
@@ -221,6 +281,18 @@ server {
 
     # iDoctor 主应用 API
     location /api/idoctor/ {
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
         # 使用变量让 Nginx 动态解析，避免启动时解析失败
         set $idoctor_backend ${IDOCTOR_API_HOST}:${IDOCTOR_API_PORT};
         # 去掉 /api/ 前缀，保留 /idoctor/（使用变量时必须手动rewrite）
@@ -243,6 +315,18 @@ server {
 
     # CTAI 主应用 API（与 iDoctor 主应用共用后端）
     location /api/ctai/ {
+        # 处理 OPTIONS 预检请求（必须在 rewrite 之前）
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
         # 使用变量让 Nginx 动态解析
         set $ctai_api_backend ${IDOCTOR_API_HOST}:${IDOCTOR_API_PORT};
         # 去掉 /api/ctai/ 前缀，代理到根路径
