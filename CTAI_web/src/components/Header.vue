@@ -107,7 +107,9 @@ export default {
     async loadUserInfo() {
       try {
         const authBaseUrl = process.env.VUE_APP_AUTH_BASE_URL || 'http://localhost:9001'
-        const response = await this.$http.get(`${authBaseUrl}/users/me`);
+        // /api/auth/users/me -> /api/users/me（users 路由独立于 auth 路由）
+        const usersBaseUrl = authBaseUrl.replace('/api/auth', '/api')
+        const response = await this.$http.get(`${usersBaseUrl}/users/me`);
         this.username = response.data.username;
       } catch (error) {
         console.error('Failed to load user info:', error);

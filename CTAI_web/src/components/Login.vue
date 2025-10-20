@@ -95,7 +95,8 @@ export default {
         this.loading = true
         try {
           const authBaseUrl = process.env.VUE_APP_AUTH_BASE_URL || 'http://localhost:9001'
-          const response = await this.$http.post(`${authBaseUrl}/auth/login`, {
+          // authBaseUrl 已包含 /api/auth，只需添加 /login
+          const response = await this.$http.post(`${authBaseUrl}/login`, {
             username_or_email: this.loginForm.username,
             password: this.loginForm.password
           })

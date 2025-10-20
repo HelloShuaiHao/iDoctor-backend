@@ -1,5 +1,6 @@
 module.exports = {
   lintOnSave: undefined,
+  // CTAI_web 独立运行在根路径，通过 Nginx /ctai 代理访问
   publicPath: './',
   outputDir: undefined,
   assetsDir: undefined,
