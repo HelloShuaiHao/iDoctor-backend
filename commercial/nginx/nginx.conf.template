@@ -19,6 +19,10 @@ server {
     listen ${NGINX_PORT};
     server_name ${NGINX_SERVER_NAME};
 
+    # 重定向配置（修复端口问题）
+    port_in_redirect off;     # 重定向时不包含端口号
+    absolute_redirect off;    # 使用相对路径重定向
+
     # 日志配置
     access_log /var/log/nginx/idoctor-commercial-access.log;
     error_log /var/log/nginx/idoctor-commercial-error.log;
