@@ -3,6 +3,7 @@ import asyncio
 import sys
 import os
 import logging
+import json
 from decimal import Decimal
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -113,7 +114,7 @@ async def seed_plans():
                         "billing_cycle": p["billing_cycle"],
                         "quota_type": p["quota_type"],
                         "quota_limit": p["quota_limit"],
-                        "features": p["features"]  # 直接传 dict
+                        "features": json.dumps(p["features"])  # 序列化为 JSON 字符串
                     }
                 )
                 logger.info(f"创建计划: {p['name']}")
