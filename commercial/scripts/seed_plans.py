@@ -4,7 +4,9 @@ import sys
 import os
 import logging
 import json
+import uuid
 from decimal import Decimal
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -101,15 +103,17 @@ async def seed_plans():
 
             insert_sql = text("""
                 INSERT INTO subscription_plans
-                (name, description, price, currency, billing_cycle, quota_type, quota_limit, features)
+                (id, name, description, price, currency, billing_cycle, quota_type, quota_limit, features, is_active, created_at, updated_at)
                 VALUES
-                (:name, :description, :price, :currency, :billing_cycle, :quota_type, :quota_limit, :features)
+                (:id, :name, :description, :price, :currency, :billing_cycle, :quota_type, :quota_limit, :features, :is_active, :created_at, :updated_at)
             """)
 
+            now = datetime.utcnow()
             for p in plans:
                 await session.execute(
                     insert_sql,
                     {
+                        "id": str(uuid.uuid4()),  # 在 Python 中生成 UUID
                         "name": p["name"],
                         "description": p["description"],
                         "price": float(p["price"]),
@@ -117,7 +121,10 @@ async def seed_plans():
                         "billing_cycle": p["billing_cycle"],
                         "quota_type": p["quota_type"],
                         "quota_limit": p["quota_limit"],
-                        "features": json.dumps(p["features"])  # 序列化为 JSON 字符串
+                        "features": json.dumps(p["features"]),  # 序列化为 JSON 字符串
+                        "is_active": True,
+                        "created_at": now,
+                        "updated_at": now
                     }
                 )
                 logger.info(f"创建计划: {p['name']}")
