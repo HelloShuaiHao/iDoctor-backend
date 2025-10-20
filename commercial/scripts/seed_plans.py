@@ -3,13 +3,14 @@ import asyncio
 import sys
 import os
 import logging
+import json
 from decimal import Decimal
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import text, bindparam
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     from shared.config import settings
@@ -95,14 +96,18 @@ async def seed_plans():
                 await session.commit()
                 return
 
-            insert_sql = text("""
-                INSERT INTO plans
-                (name, description, price, currency, billing_cycle, quota_type, quota_limit, features)
-                VALUES
-                (:name, :description, :price, :currency, :billing_cycle, :quota_type, :quota_limit, :features)
-            """)
+            insert_sql = (
+                text("""
+                    INSERT INTO plans
+                    (name, description, price, currency, billing_cycle, quota_type, quota_limit, features)
+                    VALUES
+                    (:name, :description, :price, :currency, :billing_cycle, :quota_type, :quota_limit, :features)
+                """)
+                .bindparams(bindparam("features", type_=JSONB))
+            )
 
             for p in plans:
+                features_json = json.dumps(p["features"], ensure_ascii=False)
                 await session.execute(
                     insert_sql,
                     {
@@ -113,7 +118,7 @@ async def seed_plans():
                         "billing_cycle": p["billing_cycle"],
                         "quota_type": p["quota_type"],
                         "quota_limit": p["quota_limit"],
-                        "features": p["features"]  # 直接传 dict
+                        "features": features_json
                     }
                 )
                 logger.info(f"创建计划: {p['name']}")
@@ -130,11 +135,8 @@ async def seed_plans():
 
 async def main():
     logger.info("开始初始化订阅计划...")
-    try:
-        await seed_plans()
-        logger.info("完成")
-    except Exception:
-        sys.exit(1)
+    await seed_plans()
+    logger.info("完成")
 
 
 if __name__ == "__main__":
