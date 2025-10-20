@@ -73,6 +73,9 @@ async def seed_plans():
 
     try:
         async with async_session() as session:
+            # 启用 UUID 扩展
+            await session.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\""))
+
             await session.execute(text("""
                 CREATE TABLE IF NOT EXISTS subscription_plans (
                     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
