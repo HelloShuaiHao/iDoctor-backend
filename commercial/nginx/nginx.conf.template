@@ -413,7 +413,8 @@ server {
 
     # CTAI_web 根路径重定向
     location = /ctai {
-        return 301 /ctai/;
+        # 使用 $http_host 保留客户端请求的端口
+        return 301 $scheme://$http_host/ctai/;
     }
 
     # ==================== 健康检查 ====================
