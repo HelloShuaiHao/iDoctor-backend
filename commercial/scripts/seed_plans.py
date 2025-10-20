@@ -3,6 +3,7 @@ import asyncio
 import sys
 import os
 import logging
+import json
 from decimal import Decimal
 
 # 添加项目根目录到Python路径
@@ -12,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-# 导入不要用 commercial.shared.database
+# 导入配置
 try:
     from shared.config import settings
 except ImportError:
@@ -105,8 +106,11 @@ async def seed_plans():
                 await session.commit()
                 return
             
-            # 创建计划
+            # 创建计划 - 关键修复：全部使用命名参数
             for plan_data in plans:
+                # 将 features 字典转为 JSON 字符串
+                features_json = json.dumps(plan_data["features"])
+                
                 await session.execute(
                     text("""
                         INSERT INTO plans 
@@ -117,19 +121,18 @@ async def seed_plans():
                     {
                         "name": plan_data["name"],
                         "description": plan_data["description"],
-                        "price": plan_data["price"],
+                        "price": float(plan_data["price"]),  # 转为 float
                         "currency": plan_data["currency"],
                         "billing_cycle": plan_data["billing_cycle"],
                         "quota_type": plan_data["quota_type"],
                         "quota_limit": plan_data["quota_limit"],
-                        "features": str(plan_data["features"]).replace("'", '"')  # JSON 格式
+                        "features": features_json  # JSON 字符串
                     }
                 )
+                logger.info(f"✅ 创建计划: {plan_data['name']} (¥{plan_data['price']}/月)")
             
             await session.commit()
             logger.info(f"✅ 成功创建 {len(plans)} 个订阅计划")
-            for plan_data in plans:
-                logger.info(f"   - {plan_data['name']}: ¥{plan_data['price']}/月, {plan_data['quota_limit']}次")
                 
     except Exception as e:
         logger.error(f"❌ 初始化失败: {e}", exc_info=True)
