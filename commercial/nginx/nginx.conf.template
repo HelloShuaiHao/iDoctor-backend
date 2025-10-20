@@ -279,6 +279,40 @@ server {
         proxy_request_buffering off;
     }
 
+    # Admin API（管理接口，如配额管理）
+    location /api/admin/ {
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
+        # 使用变量让 Nginx 动态解析
+        set $admin_backend ${IDOCTOR_API_HOST}:${IDOCTOR_API_PORT};
+        # 去掉 /api/ 前缀，保留 /admin/
+        rewrite ^/api/(.*) /$1 break;
+        proxy_pass http://$admin_backend;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Origin $http_origin;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
     # iDoctor 主应用 API
     location /api/idoctor/ {
         # 处理 OPTIONS 预检请求
