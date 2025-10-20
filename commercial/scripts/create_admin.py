@@ -4,7 +4,8 @@ import sys
 import os
 
 # 添加项目根目录到Python路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+# /app/scripts/create_admin.py -> /app
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from commercial.shared.database import AsyncSessionLocal
 from commercial.auth_service.models.user import User
