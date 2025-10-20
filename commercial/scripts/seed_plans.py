@@ -3,34 +3,27 @@ import asyncio
 import sys
 import os
 import logging
-import json
 from decimal import Decimal
 
-# 添加项目根目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-# 导入配置
 try:
     from shared.config import settings
 except ImportError:
-    try:
-        from commercial.shared.config import settings
-    except ImportError:
-        raise ImportError("无法导入 settings，请检查路径配置")
+    from commercial.shared.config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 async def seed_plans():
-    """创建默认订阅计划"""
     engine = create_async_engine(settings.DATABASE_URL)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    
+
     plans = [
         {
             "name": "免费版",
@@ -79,7 +72,6 @@ async def seed_plans():
 
     try:
         async with async_session() as session:
-            # 创建 plans 表
             await session.execute(text("""
                 CREATE TABLE IF NOT EXISTS plans (
                     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -96,58 +88,52 @@ async def seed_plans():
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
             """))
-            
-            # 检查是否已存在计划
+
             result = await session.execute(text("SELECT COUNT(*) FROM plans"))
-            count = result.scalar()
-            
-            if count > 0:
-                logger.info(f"⚠️  已存在 {count} 个订阅计划，跳过初始化")
+            if result.scalar() > 0:
+                logger.info("已存在订阅计划，跳过初始化")
                 await session.commit()
                 return
-            
-            # 创建计划 - 关键修复：全部使用命名参数
-            for plan_data in plans:
-                # 将 features 字典转为 JSON 字符串
-                features_json = json.dumps(plan_data["features"])
-                
+
+            insert_sql = text("""
+                INSERT INTO plans
+                (name, description, price, currency, billing_cycle, quota_type, quota_limit, features)
+                VALUES
+                (:name, :description, :price, :currency, :billing_cycle, :quota_type, :quota_limit, :features)
+            """)
+
+            for p in plans:
                 await session.execute(
-                    text("""
-                        INSERT INTO plans 
-                        (name, description, price, currency, billing_cycle, quota_type, quota_limit, features)
-                        VALUES 
-                        (:name, :description, :price, :currency, :billing_cycle, :quota_type, :quota_limit, :features::jsonb)
-                    """),
+                    insert_sql,
                     {
-                        "name": plan_data["name"],
-                        "description": plan_data["description"],
-                        "price": float(plan_data["price"]),  # 转为 float
-                        "currency": plan_data["currency"],
-                        "billing_cycle": plan_data["billing_cycle"],
-                        "quota_type": plan_data["quota_type"],
-                        "quota_limit": plan_data["quota_limit"],
-                        "features": features_json  # JSON 字符串
+                        "name": p["name"],
+                        "description": p["description"],
+                        "price": float(p["price"]),
+                        "currency": p["currency"],
+                        "billing_cycle": p["billing_cycle"],
+                        "quota_type": p["quota_type"],
+                        "quota_limit": p["quota_limit"],
+                        "features": p["features"]  # 直接传 dict
                     }
                 )
-                logger.info(f"✅ 创建计划: {plan_data['name']} (¥{plan_data['price']}/月)")
-            
+                logger.info(f"创建计划: {p['name']}")
+
             await session.commit()
-            logger.info(f"✅ 成功创建 {len(plans)} 个订阅计划")
-                
+            logger.info(f"成功创建 {len(plans)} 个订阅计划")
+
     except Exception as e:
-        logger.error(f"❌ 初始化失败: {e}", exc_info=True)
+        logger.error(f"初始化失败: {e}", exc_info=True)
         raise
     finally:
         await engine.dispose()
 
 
 async def main():
-    logger.info("🚀 开始初始化订阅计划...")
+    logger.info("开始初始化订阅计划...")
     try:
         await seed_plans()
-        logger.info("✨ 完成！")
-    except Exception as e:
-        logger.error(f"❌ 失败: {e}")
+        logger.info("完成")
+    except Exception:
         sys.exit(1)
 
 
