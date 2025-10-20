@@ -73,30 +73,30 @@ async def seed_plans():
     try:
         async with async_session() as session:
             await session.execute(text("""
-                CREATE TABLE IF NOT EXISTS plans (
+                CREATE TABLE IF NOT EXISTS subscription_plans (
                     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                     name VARCHAR(100) UNIQUE NOT NULL,
-                    description TEXT,
+                    description VARCHAR(500),
                     price DECIMAL(10,2) NOT NULL,
                     currency VARCHAR(10) DEFAULT 'CNY',
-                    billing_cycle VARCHAR(50) DEFAULT 'monthly',
-                    quota_type VARCHAR(100),
-                    quota_limit DECIMAL(15,2),
+                    billing_cycle VARCHAR(20) NOT NULL,
+                    quota_type VARCHAR(50) NOT NULL,
+                    quota_limit INTEGER NOT NULL,
                     features JSONB,
                     is_active BOOLEAN DEFAULT true,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
                 )
             """))
 
-            result = await session.execute(text("SELECT COUNT(*) FROM plans"))
+            result = await session.execute(text("SELECT COUNT(*) FROM subscription_plans"))
             if result.scalar() > 0:
                 logger.info("已存在订阅计划，跳过初始化")
                 await session.commit()
                 return
 
             insert_sql = text("""
-                INSERT INTO plans
+                INSERT INTO subscription_plans
                 (name, description, price, currency, billing_cycle, quota_type, quota_limit, features)
                 VALUES
                 (:name, :description, :price, :currency, :billing_cycle, :quota_type, :quota_limit, :features)
