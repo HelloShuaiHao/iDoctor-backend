@@ -132,10 +132,8 @@ export default {
     },
     loadImage() {
       if (!this.axisalFilename) return;
-      this.imgUrl =
-        getAxisalImageUrl(this.patient, this.date, this.axisalFilename) +
-        "?t=" +
-        Date.now();
+      // getAxisalImageUrl 已经包含时间戳和token，无需再次添加
+      this.imgUrl = getAxisalImageUrl(this.patient, this.date, this.axisalFilename);
     },
     onImgLoad(e) {
       const img = e.target;
