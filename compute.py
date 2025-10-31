@@ -113,12 +113,25 @@ def process_all(
         print("[警告] 未在 slice_dir 中找到任何图片：", slice_dir)
         return
 
-    # dicom_files = sorted(os.listdir(dicom_dir))
-    dicom_files = sorted([
+    # 构建 InstanceNumber -> DICOM 文件的映射表
+    instance_to_dicom = {}
+    dicom_files = [
         f for f in os.listdir(dicom_dir)
         if not f.startswith("._") and f.lower().endswith((".dcm", ".dcm.pk"))
-    ])
-    
+    ]
+
+    for dicom_file in dicom_files:
+        try:
+            dicom_path = os.path.join(dicom_dir, dicom_file)
+            ds = pydicom.dcmread(dicom_path)
+            instance_num = int(ds.get("InstanceNumber", -1))
+            if instance_num > 0:
+                instance_to_dicom[instance_num] = dicom_file
+        except Exception as e:
+            print(f"[警告] 读取 DICOM 元数据失败 {dicom_file}: {e}")
+
+    print(f"[INFO] 成功建立 InstanceNumber 映射: {len(instance_to_dicom)} 个文件")
+
     results = []
     valid_items = []
 
@@ -169,16 +182,17 @@ def process_all(
         if combo_overlay is not None:
             cv2.imwrite(combo_overlay_path, combo_overlay)
 
-        # --- DICOM ---
+        # --- DICOM 匹配（通过 InstanceNumber）---
         match = re.search(r'(\d+)', fname)
         if match:
-            slice_id = match.group(1).zfill(3)
-            dicom_match = next((f for f in dicom_files if slice_id in f), None)
-            if dicom_match:
-                dicom_path = os.path.join(dicom_dir, dicom_match)
+            instance_num = int(match.group(1))  # 从文件名提取 InstanceNumber
+            dicom_file = instance_to_dicom.get(instance_num)
+            if dicom_file:
+                dicom_path = os.path.join(dicom_dir, dicom_file)
                 stat_psoas = compute_mask_hu_statistics(dicom_path, psoas_bin == 255)
                 stat_combo = compute_mask_hu_statistics(dicom_path, combo_mask == 255)
             else:
+                print(f"[警告] {fname} 的 InstanceNumber={instance_num} 未找到对应 DICOM")
                 stat_psoas = {"pixels":0,"hu_mean":np.nan,"hu_min":np.nan,"hu_max":np.nan,"hu_sum":np.nan,"area_mm2":0.0,"error":"No matching DICOM"}
                 stat_combo = stat_psoas.copy()
         else:
@@ -270,17 +284,31 @@ def compute_manual_middle_statistics(slice_path, psoas_mask_path, combo_mask_pat
     case_root = os.path.dirname(os.path.dirname(os.path.dirname(slice_path)))
     dicom_dir = os.path.join(case_root, "input")
 
-    slice_id = "".join([c for c in middle_name if c.isdigit()])
-    dicom_file = None
-    for f in os.listdir(dicom_dir):
-        if slice_id in f and f.lower().endswith((".dcm", ".dcm.pk")):
-            dicom_file = os.path.join(dicom_dir, f)
-            break
-    if not dicom_file:
-        return {"error": "未找到对应 DICOM"}
+    # 从文件名提取 InstanceNumber
+    match = re.search(r'(\d+)', middle_name)
+    if not match:
+        return {"error": "文件名中未找到数字"}
 
-    stat_psoas = compute_mask_hu_statistics(dicom_file, psoas_bin == 1)
-    stat_combo = compute_mask_hu_statistics(dicom_file, combo_bin == 1)
+    instance_num = int(match.group(1))
+
+    # 构建 InstanceNumber -> DICOM 文件映射
+    dicom_file_path = None
+    for f in os.listdir(dicom_dir):
+        if not f.startswith("._") and f.lower().endswith((".dcm", ".dcm.pk")):
+            try:
+                temp_path = os.path.join(dicom_dir, f)
+                ds = pydicom.dcmread(temp_path)
+                if int(ds.get("InstanceNumber", -1)) == instance_num:
+                    dicom_file_path = temp_path
+                    break
+            except Exception:
+                continue
+
+    if not dicom_file_path:
+        return {"error": f"未找到 InstanceNumber={instance_num} 对应的 DICOM"}
+
+    stat_psoas = compute_mask_hu_statistics(dicom_file_path, psoas_bin == 1)
+    stat_combo = compute_mask_hu_statistics(dicom_file_path, combo_bin == 1)
 
     # overlay: psoas红色，combo绿色，重叠黄色（颜色更亮，alpha更高）
     overlay = img.copy()
