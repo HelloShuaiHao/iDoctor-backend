@@ -203,6 +203,28 @@ app.add_middleware(
 )
 logger.info("CORS middleware added")
 
+# ==================== SAM2 分割服务集成 ====================
+from sam2_client import get_sam2_client, init_sam2_client
+
+SAM2_ENABLED = os.getenv("SAM2_ENABLED", "true").lower() == "true"
+sam2_available = False
+
+@app.on_event("startup")
+async def startup_sam2():
+    """Initialize SAM2 client on startup"""
+    global sam2_available
+    if SAM2_ENABLED:
+        logger.info("🤖 Initializing SAM2 service...")
+        sam2_available = await init_sam2_client()
+        if sam2_available:
+            logger.info("✅ SAM2 service initialized successfully")
+        else:
+            logger.warning("⚠️  SAM2 service unavailable - one-click segmentation disabled")
+    else:
+        logger.info("ℹ️  SAM2 service disabled")
+
+# ==================== SAM2 分割服务集成结束 ====================
+
 # ==================== 注册商业化中间件 ====================
 logger.info(f"Registering commercial middleware... COMMERCIAL_AVAILABLE={COMMERCIAL_AVAILABLE}, ENABLE_AUTH={ENABLE_AUTH}, ENABLE_QUOTA={ENABLE_QUOTA}")
 if COMMERCIAL_AVAILABLE and (ENABLE_AUTH or ENABLE_QUOTA):
@@ -857,6 +879,108 @@ async def upload_middle_manual_mask(
         return obj
     
     return clean_floats(result)
+
+# ==================== SAM2 分割端点 ====================
+@app.post("/api/segmentation/sam2")
+async def sam2_segment(
+    request: Request,
+    file: UploadFile = File(...),
+    image_type: str = Form("auto"),
+    patient_id: str = Form(None),
+    slice_index: str = Form(None)
+):
+    """
+    SAM2 一键分割端点
+
+    Args:
+        file: 图像文件 (PNG, JPEG)
+        image_type: 图像类型 ("L3" 或 "middle" 或 "auto")
+        patient_id: 患者ID (可选)
+        slice_index: 切片索引 (可选)
+
+    Returns:
+        JSON response with mask_data (base64), confidence_score, processing_time_ms, cached, bounding_box
+    """
+    if not SAM2_ENABLED:
+        raise HTTPException(status_code=503, detail="SAM2 service is disabled")
+
+    sam2_client = get_sam2_client()
+
+    if not sam2_client.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="SAM2 service is currently unavailable. Please try again later."
+        )
+
+    try:
+        # 读取图像数据
+        image_data = await file.read()
+
+        # 验证图像格式
+        if not file.content_type or not file.content_type.startswith("image/"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid image format. Expected image/*, got {file.content_type}"
+            )
+
+        # 调用 SAM2 分割
+        mask_bytes, metadata = await sam2_client.segment_image(
+            image_data=image_data,
+            image_type=image_type,
+            use_cache=True
+        )
+
+        if mask_bytes is None:
+            error_msg = metadata.get("error", "Unknown error")
+            raise HTTPException(status_code=500, detail=error_msg)
+
+        # 编码 mask 为 base64
+        import base64
+        mask_base64 = base64.b64encode(mask_bytes).decode('utf-8')
+
+        # 构建响应
+        response = {
+            "mask_data": mask_base64,
+            "confidence_score": metadata.get("confidence_score", 0.0),
+            "processing_time_ms": metadata.get("processing_time_ms", 0),
+            "cached": metadata.get("cached", False),
+            "bounding_box": metadata.get("bounding_box"),
+            "image_type": image_type,
+            "patient_id": patient_id,
+            "slice_index": slice_index
+        }
+
+        logger.info(
+            f"SAM2 segmentation successful: "
+            f"type={image_type}, confidence={response['confidence_score']:.3f}, "
+            f"cached={response['cached']}, time={response['processing_time_ms']}ms"
+        )
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"SAM2 segmentation error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Segmentation failed: {str(e)}")
+
+@app.get("/api/segmentation/sam2/health")
+async def sam2_health():
+    """
+    SAM2 服务健康检查端点
+
+    Returns:
+        JSON response with SAM2 service status
+    """
+    sam2_client = get_sam2_client()
+
+    return {
+        "enabled": SAM2_ENABLED,
+        "available": sam2_client.is_available(),
+        "cache_stats": sam2_client.get_cache_stats()
+    }
+
+# ==================== SAM2 分割端点结束 ====================
 
 def safe_clear_folder(folder, patterns):
     if not os.path.isdir(folder):

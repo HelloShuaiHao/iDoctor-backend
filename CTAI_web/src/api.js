@@ -226,4 +226,94 @@ export async function getUploadStatus(upload_id) {
   return axios.get(`${BASE_URL}/upload_status/${upload_id}`)
 }
 
+// ==================== SAM2 分割 API ====================
+
+/**
+ * SAM2 一键分割
+ * @param {Object} params - 参数对象
+ * @param {Blob|File} params.imageFile - 图像文件对象
+ * @param {string} params.imageType - 图像类型 ("L3", "middle", "auto")
+ * @param {string} params.patientId - 患者ID (可选)
+ * @param {string} params.sliceIndex - 切片索引 (可选)
+ * @returns {Promise<Object>} - 返回分割结果
+ * @returns {string} .mask_data - Base64 编码的 mask PNG 图像
+ * @returns {number} .confidence_score - 置信度 (0.0-1.0)
+ * @returns {number} .processing_time_ms - 处理时间 (毫秒)
+ * @returns {boolean} .cached - 是否来自缓存
+ * @returns {Object} .bounding_box - 边界框 {x, y, width, height}
+ */
+export async function sam2Segment({ imageFile, imageType = 'auto', patientId = null, sliceIndex = null }) {
+  try {
+    const formData = new FormData()
+    formData.append('file', imageFile)
+    formData.append('image_type', imageType)
+
+    if (patientId) {
+      formData.append('patient_id', patientId)
+    }
+
+    if (sliceIndex) {
+      formData.append('slice_index', sliceIndex)
+    }
+
+    const response = await axios.post(
+      `${BASE_URL}/api/segmentation/sam2`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        timeout: 35000 // 35秒超时 (服务端30秒 + 5秒缓冲)
+      }
+    )
+
+    return response.data
+  } catch (error) {
+    // 增强错误处理
+    if (error.response) {
+      const status = error.response.status
+      const detail = error.response.data?.detail || error.response.data?.message || 'Unknown error'
+
+      if (status === 503) {
+        throw new Error('SAM2 服务暂时不可用，请稍后重试')
+      } else if (status === 400) {
+        throw new Error(`无效的图像格式: ${detail}`)
+      } else if (status === 500) {
+        throw new Error(`分割失败: ${detail}`)
+      } else {
+        throw new Error(`请求失败 (${status}): ${detail}`)
+      }
+    } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      throw new Error('SAM2 分割超时，请重试')
+    } else {
+      throw new Error(`网络错误: ${error.message}`)
+    }
+  }
+}
+
+/**
+ * 检查 SAM2 服务健康状态
+ * @returns {Promise<Object>} - 返回健康状态
+ * @returns {boolean} .enabled - SAM2 是否启用
+ * @returns {boolean} .available - SAM2 是否可用
+ * @returns {Object} .cache_stats - 缓存统计信息
+ */
+export async function checkSam2Health() {
+  try {
+    const response = await axios.get(`${BASE_URL}/api/segmentation/sam2/health`, {
+      timeout: 5000
+    })
+    return response.data
+  } catch (error) {
+    console.error('SAM2 health check failed:', error)
+    return {
+      enabled: false,
+      available: false,
+      cache_stats: {}
+    }
+  }
+}
+
+// ==================== SAM2 分割 API 结束 ====================
+
 export { BASE_URL }

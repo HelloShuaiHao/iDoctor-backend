@@ -83,6 +83,40 @@ services:
       - commercial_network
     restart: "no"
 
+  # SAM2 分割服务
+  sam2_service:
+    build:
+      context: .
+      dockerfile: Dockerfile.sam2
+    container_name: idoctor_sam2_service
+    environment:
+      SAM2_MODEL_PATH: ${SAM2_MODEL_PATH:-/app/models/sam2_hiera_large.pt}
+      SAM2_DEVICE: ${SAM2_DEVICE:-cpu}
+      SAM2_BATCH_SIZE: ${SAM2_BATCH_SIZE:-1}
+      SAM2_CONFIDENCE_THRESHOLD: ${SAM2_CONFIDENCE_THRESHOLD:-0.5}
+    ports:
+      - "8000:8000"
+    volumes:
+      # 挂载模型权重
+      - sam2_models:/app/models
+      # 挂载临时缓存（可选）
+      - sam2_cache:/tmp/sam2_cache
+    networks:
+      - commercial_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
   # Nginx 前端服务
   frontend_nginx:
     build:
@@ -99,6 +133,8 @@ services:
       PAYMENT_SERVICE_PORT: 9002
       IDOCTOR_API_HOST: host.docker.internal  # Docker内访问宿主机
       IDOCTOR_API_PORT: 4200
+      SAM2_SERVICE_HOST: sam2_service
+      SAM2_SERVICE_PORT: 8000
       STATIC_ROOT: /usr/share/nginx/html
     volumes:
       # 挂载前端构建产物
@@ -110,6 +146,7 @@ services:
     depends_on:
       - auth_service
       - payment_service
+      - sam2_service
     networks:
       - commercial_network
     restart: unless-stopped
@@ -123,6 +160,10 @@ volumes:
   idoctor_commercial_postgres_data:
     driver: local
   nginx_logs:
+    driver: local
+  sam2_models:
+    driver: local
+  sam2_cache:
     driver: local
 
 networks:

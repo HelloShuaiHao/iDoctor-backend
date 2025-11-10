@@ -24,6 +24,16 @@
         <span class="tip">{{ $t("middleEditor.polyHint") }}</span>
       </div>
       <div class="ops">
+        <el-button
+          size="mini"
+          type="warning"
+          icon="el-icon-magic-stick"
+          :disabled="!imgUrl || sam2Processing"
+          :loading="sam2Processing"
+          @click="runSam2Segment"
+        >
+          {{ sam2Processing ? '分割中...' : 'AI一键分割' }}
+        </el-button>
         <el-button size="mini" :disabled="!canUndo" @click="undo">{{
           currentPoly.length ? $t("actions.undoPoint") : $t("actions.undo")
         }}</el-button>
@@ -74,7 +84,7 @@
 
 <script>
 // ...existing code...
-import { uploadMiddleManualMask, getAxisalImageUrl } from "@/api";
+import { uploadMiddleManualMask, getAxisalImageUrl, sam2Segment } from "@/api";
 
 export default {
   name: "MiddleMaskEditor",
@@ -90,6 +100,7 @@ export default {
       imgUrl: "",
       loading: false,
       saving: false,
+      sam2Processing: false, // SAM2 分割处理中
       naturalWidth: 0,
       naturalHeight: 0,
       scale: 1,
@@ -310,6 +321,114 @@ export default {
           this.currentPoly.pop();
           this.redraw();
         }
+      }
+    },
+    // SAM2 一键分割
+    async runSam2Segment() {
+      // 如果当前模式已有标注，需要确认
+      if (this.polys[this.mode].length > 0) {
+        try {
+          await this.$confirm(
+            `使用AI分割将替换当前${this.mode === 'psoas' ? '腰大肌' : '全肌肉'}标注，是否继续？`,
+            '提示',
+            {
+              confirmButtonText: '继续',
+              cancelButtonText: '取消',
+              type: 'warning'
+            }
+          );
+        } catch {
+          return; // 用户取消
+        }
+      }
+
+      this.sam2Processing = true;
+
+      try {
+        // 将当前图像转换为Blob
+        const response = await fetch(this.imgUrl);
+        const imageBlob = await response.blob();
+
+        // 调用SAM2 API
+        const result = await sam2Segment({
+          imageFile: imageBlob,
+          imageType: 'middle',
+          patientId: this.patient,
+          sliceIndex: this.axisalFilename
+        });
+
+        // 显示处理时间和置信度
+        const timeMsg = result.cached ? '(缓存)' : `(${result.processing_time_ms}ms)`;
+        this.$message.success(
+          `AI分割完成 ${timeMsg} 置信度: ${(result.confidence_score * 100).toFixed(1)}%`
+        );
+
+        // 解码mask_data (base64 PNG)
+        const maskImage = new Image();
+        maskImage.onload = () => {
+          // 分析mask图像，提取多边形
+          this.extractPolyFromMask(maskImage);
+        };
+        maskImage.onerror = () => {
+          throw new Error('Mask图像加载失败');
+        };
+        maskImage.src = `data:image/png;base64,${result.mask_data}`;
+
+      } catch (error) {
+        console.error('SAM2 分割失败:', error);
+        this.$message.error(error.message || 'AI分割失败，请重试');
+      } finally {
+        this.sam2Processing = false;
+      }
+    },
+    // 从mask图像提取多边形
+    extractPolyFromMask(maskImage) {
+      const canvas = document.createElement('canvas');
+      canvas.width = maskImage.width;
+      canvas.height = maskImage.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(maskImage, 0, 0);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      // 找到mask的边界 (简化版，创建一个包围多边形)
+      let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+      let hasWhitePixel = false;
+
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const idx = (y * canvas.width + x) * 4;
+          const r = data[idx];
+
+          // 白色像素 (假设mask的前景是白色或亮色)
+          if (r > 128) {
+            hasWhitePixel = true;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+
+      if (hasWhitePixel) {
+        // 创建一个矩形多边形 (简化版，实际应该跟踪轮廓)
+        const poly = [
+          {x: minX, y: minY},
+          {x: maxX, y: minY},
+          {x: maxX, y: maxY},
+          {x: minX, y: maxY}
+        ];
+
+        // 清除当前模式的多边形并添加新的
+        this.polys[this.mode] = [poly];
+        this.currentPoly = [];
+
+        this.redraw();
+        this.$message.success(`已提取分割区域: ${maxX - minX} x ${maxY - minY} 像素`);
+      } else {
+        this.$message.warning('未检测到分割区域，请手动标注');
       }
     },
     async save() {
