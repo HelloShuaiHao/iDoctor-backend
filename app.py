@@ -602,12 +602,22 @@ def get_key_results(request: Request, patient_name: str, study_date: str):
 @app.get("/get_image/{patient_name}/{study_date}/{filename}")
 def get_image(request: Request, patient_name: str, study_date: str, filename: str):
     user_id = getattr(request.state, "user_id", None)
-    
+
     patient_root = _patient_root(patient_name, study_date, user_id)
     img_path = os.path.join(patient_root, "output", "full_overlay", filename)
     if not os.path.exists(img_path):
         return {"error": "图片不存在"}
-    return FileResponse(img_path, media_type="image/png")    
+
+    # 创建 FileResponse 并添加 CORS 头
+    response = FileResponse(img_path, media_type="image/png")
+
+    # 添加 CORS 头以支持跨域访问
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+
+    return response    
 
 @app.post("/l3_detect/{patient_name}/{study_date}")
 def api_l3_detect(request: Request, patient_name: str, study_date: str):
@@ -768,7 +778,17 @@ def get_output_image(request: Request, patient_name: str, study_date: str, folde
     file_path = os.path.join(patient_root, "output", folder, filename)
     if not os.path.exists(file_path):
         return {"error": "图片不存在"}
-    return FileResponse(file_path, media_type="image/png")
+
+    # 创建 FileResponse 并添加 CORS 头
+    response = FileResponse(file_path, media_type="image/png")
+
+    # 添加 CORS 头以支持跨域访问
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+
+    return response
 
 @app.post("/generate_sagittal/{patient_name}/{study_date}")
 def api_generate_sagittal(request: Request, patient_name: str, study_date: str, force: int = Query(0)):

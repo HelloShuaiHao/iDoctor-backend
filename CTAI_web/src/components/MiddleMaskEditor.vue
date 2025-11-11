@@ -26,18 +26,36 @@
       <div class="ops">
         <el-button
           size="mini"
-          type="warning"
+          :type="sam2ClickMode ? 'success' : 'warning'"
           icon="el-icon-magic-stick"
           :disabled="!imgUrl || sam2Processing"
-          :loading="sam2Processing"
-          @click="runSam2Segment"
+          @click="toggleSam2ClickMode"
         >
-          {{ sam2Processing ? '分割中...' : 'AI一键分割' }}
+          {{ sam2ClickMode ? '点击模式(已启用)' : 'SAM2交互分割' }}
         </el-button>
-        <el-button size="mini" :disabled="!canUndo" @click="undo">{{
+        <el-button
+          v-if="sam2ClickMode"
+          size="mini"
+          type="primary"
+          :disabled="clickPoints.length === 0 || sam2Processing"
+          :loading="sam2Processing"
+          @click="runSam2SegmentWithClicks"
+        >
+          {{ sam2Processing ? `分割中...` : `执行分割(${clickPoints.length}个点)` }}
+        </el-button>
+        <el-button
+          v-if="sam2ClickMode"
+          size="mini"
+          :disabled="clickPoints.length === 0"
+          @click="clearClickPoints"
+        >
+          清除点击
+        </el-button>
+        <el-button v-if="!sam2ClickMode" size="mini" :disabled="!canUndo" @click="undo">{{
           currentPoly.length ? $t("actions.undoPoint") : $t("actions.undo")
         }}</el-button>
         <el-button
+          v-if="!sam2ClickMode"
           size="mini"
           :disabled="!polys[mode].length"
           @click="clearMode"
@@ -84,6 +102,7 @@
 
 <script>
 // ...existing code...
+import axios from 'axios';
 import { uploadMiddleManualMask, getAxisalImageUrl, sam2Segment } from "@/api";
 
 export default {
@@ -108,6 +127,9 @@ export default {
       polys: { psoas: [], combo: [] }, // 每个元素：[{x,y},...]
       currentPoly: [],
       hoverPoint: null,
+      // SAM2交互模式
+      sam2ClickMode: false, // 是否处于SAM2点击模式
+      clickPoints: [], // 用户点击的点 [{x, y, label}]
     };
   },
   computed: {
@@ -185,6 +207,16 @@ export default {
     onCanvasDown(e) {
       if (!this.imgUrl) return;
       const p = this.evtToImg(e);
+
+      // SAM2点击模式: 记录点击点
+      if (this.sam2ClickMode) {
+        // 左键: 前景点(label=1), 右键: 背景点(label=0)
+        const label = e.button === 0 ? 1 : 0;
+        this.clickPoints.push({ x: Math.round(p.x), y: Math.round(p.y), label });
+        this.redraw();
+        return;
+      }
+
       if (!this.currentPoly.length) {
         // 新多边形起点
         this.currentPoly.push(p);
@@ -310,6 +342,21 @@ export default {
           ctx.fill();
         }
       }
+
+      // SAM2点击模式: 绘制点击点
+      if (this.sam2ClickMode) {
+        for (const pt of this.clickPoints) {
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+          // 前景点用绿色，背景点用红色
+          ctx.fillStyle = pt.label === 1 ? 'rgba(0, 255, 0, 0.8)' : 'rgba(255, 0, 0, 0.8)';
+          ctx.fill();
+          ctx.strokeStyle = 'white';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+
       ctx.restore();
     },
     onKey(e) {
@@ -345,9 +392,13 @@ export default {
       this.sam2Processing = true;
 
       try {
-        // 将当前图像转换为Blob
-        const response = await fetch(this.imgUrl);
-        const imageBlob = await response.blob();
+        // 从 imgUrl 中移除 token 参数，让 axios 拦截器自动添加 Authorization 头
+        const urlWithoutToken = this.imgUrl.split('?')[0];
+        const url = `${urlWithoutToken}?t=${Date.now()}`;
+
+        // 使用 axios 获取图片，这样可以利用拦截器自动刷新 token
+        const response = await axios.get(url, { responseType: 'blob' });
+        const imageBlob = response.data;
 
         // 调用SAM2 API
         const result = await sam2Segment({
@@ -367,6 +418,91 @@ export default {
         const maskImage = new Image();
         maskImage.onload = () => {
           // 分析mask图像，提取多边形
+          this.extractPolyFromMask(maskImage);
+        };
+        maskImage.onerror = () => {
+          throw new Error('Mask图像加载失败');
+        };
+        maskImage.src = `data:image/png;base64,${result.mask_data}`;
+
+      } catch (error) {
+        console.error('SAM2 分割失败:', error);
+        this.$message.error(error.message || 'AI分割失败，请重试');
+      } finally {
+        this.sam2Processing = false;
+      }
+    },
+    // 切换SAM2点击模式
+    toggleSam2ClickMode() {
+      this.sam2ClickMode = !this.sam2ClickMode;
+      if (this.sam2ClickMode) {
+        // 进入点击模式时清空点击点和当前多边形
+        this.clickPoints = [];
+        this.currentPoly = [];
+        // 禁用右键菜单
+        const canvas = this.$refs.canvas;
+        if (canvas) {
+          canvas.oncontextmenu = (e) => {
+            e.preventDefault();
+            return false;
+          };
+        }
+        this.$message.info('已进入SAM2交互模式，左键点击肌肉区域，右键点击背景区域');
+      } else {
+        // 退出点击模式
+        const canvas = this.$refs.canvas;
+        if (canvas) {
+          canvas.oncontextmenu = null;
+        }
+      }
+      this.redraw();
+    },
+    // 清除点击点
+    clearClickPoints() {
+      this.clickPoints = [];
+      this.redraw();
+    },
+    // SAM2交互分割（带点击点）
+    async runSam2SegmentWithClicks() {
+      if (this.clickPoints.length === 0) {
+        this.$message.warning('请至少点击一个点');
+        return;
+      }
+
+      this.sam2Processing = true;
+
+      try {
+        // 从 imgUrl 中移除 token 参数，让 axios 拦截器自动添加 Authorization 头
+        const urlWithoutToken = this.imgUrl.split('?')[0];
+        const url = `${urlWithoutToken}?t=${Date.now()}`;
+
+        // 使用 axios 获取图片，这样可以利用拦截器自动刷新 token
+        const response = await axios.get(url, { responseType: 'blob' });
+        const imageBlob = response.data;
+
+        // 调用SAM2 API with click points
+        const result = await sam2Segment({
+          imageFile: imageBlob,
+          imageType: 'middle',
+          patientId: this.patient,
+          sliceIndex: this.axisalFilename,
+          clickPoints: this.clickPoints // 传递点击点
+        });
+
+        // 显示处理时间和置信度
+        const timeMsg = result.cached ? '(缓存)' : `(${result.processing_time_ms}ms)`;
+        this.$message.success(
+          `AI分割完成 ${timeMsg} 置信度: ${(result.confidence_score * 100).toFixed(1)}%`
+        );
+
+        // 解码mask_data (base64 PNG)
+        const maskImage = new Image();
+        maskImage.onload = () => {
+          // 先退出SAM2模式
+          this.sam2ClickMode = false;
+          this.clickPoints = [];
+
+          // 然后分析mask图像，提取多边形
           this.extractPolyFromMask(maskImage);
         };
         maskImage.onerror = () => {
