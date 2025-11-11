@@ -19,14 +19,18 @@ EXEMPT_PATHS = {
     # 认证服务本身的路径（如果在同一应用）
     "/auth/register",
     "/auth/login",
-    "/auth/refresh"
+    "/auth/refresh",
+    # SAM2 服务健康检查
+    "/api/segmentation/sam2/health"
 }
 
 # 支持路径前缀匹配
 EXEMPT_PREFIX = [
     "/docs",
     "/redoc",
-    "/auth/"
+    "/auth/",
+    # SAM2 demo 端点（公开访问，用于演示）
+    "/api/segmentation/"
 ]
 
 

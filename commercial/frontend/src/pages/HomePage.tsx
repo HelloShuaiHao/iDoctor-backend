@@ -13,7 +13,9 @@ import {
   Brain,
   ArrowRight,
   CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
+import { DemoSegmentationCard } from '@/components/demo/DemoSegmentationCard';
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -161,6 +163,29 @@ const HomePage: React.FC = () => {
               </Card>
             );
           })}
+        </div>
+      </div>
+
+      {/* AI Image Segmentation Demo Section */}
+      <div className="relative container mx-auto px-4 py-20" style={{ zIndex: 2 }}>
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-purple-500/10 to-pink-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 mb-6">
+            <Sparkles className="h-4 w-4" />
+            <span className="text-sm font-medium">AI 技术演示</span>
+          </div>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+            体验 AI 图像分割技术
+          </h2>
+          <p className="text-muted-foreground max-w-2xl mx-auto mb-2">
+            使用先进的 SAM2 模型进行交互式图像分割
+          </p>
+          <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
+            无需登录，立即体验 AI 的强大能力
+          </p>
+        </div>
+
+        <div className="max-w-md mx-auto">
+          <DemoSegmentationCard />
         </div>
       </div>
 

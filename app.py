@@ -1011,7 +1011,7 @@ async def sam2_health():
 
     return {
         "enabled": SAM2_ENABLED,
-        "available": sam2_client.is_available(),
+        "available": await sam2_client.is_available(),
         "cache_stats": sam2_client.get_cache_stats()
     }
 

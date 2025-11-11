@@ -94,11 +94,11 @@ check_prerequisites() {
     info "Docker $(docker --version | sed -n 's/.*version \([0-9.]*\).*/\1/p') ✓"
 
     # 检查 Docker Compose
-    if ! command -v docker-compose &> /dev/null; then
+    if ! docker compose version &> /dev/null; then
         error "Docker Compose 未安装"
         exit 1
     fi
-    info "Docker Compose $(docker-compose --version | sed -n 's/.*version \([0-9.]*\).*/\1/p') ✓"
+    info "Docker Compose $(docker compose version --short) ✓"
 
     # 检查 wget (SAM2 模型下载需要)
     if ! command -v wget &> /dev/null; then
@@ -224,15 +224,15 @@ start_docker_services() {
 
     # 停止现有服务
     info "停止现有服务..."
-    docker-compose $COMPOSE_FILES down
+    docker compose $COMPOSE_FILES down
 
     # 构建镜像
     info "构建 Docker 镜像..."
-    docker-compose $COMPOSE_FILES build
+    docker compose $COMPOSE_FILES build
 
     # 启动服务
     info "启动服务..."
-    docker-compose $COMPOSE_FILES $ENV_FILE up -d
+    docker compose $COMPOSE_FILES $ENV_FILE up -d
 
     # 等待服务启动
     info "等待服务启动..."
@@ -240,7 +240,7 @@ start_docker_services() {
 
     # 检查服务状态
     info "检查服务状态..."
-    docker-compose $COMPOSE_FILES ps
+    docker compose $COMPOSE_FILES ps
 
     success "Docker 服务启动完成"
 }
@@ -352,9 +352,9 @@ show_deployment_info() {
     echo "   - SAM2 服务: http://localhost:8000/docs"
     echo ""
     echo "🔍 常用命令:"
-    echo "   - 查看日志: cd $DOCKER_DIR && docker-compose logs -f"
-    echo "   - 停止服务: cd $DOCKER_DIR && docker-compose down"
-    echo "   - 重启服务: cd $DOCKER_DIR && docker-compose restart"
+    echo "   - 查看日志: cd $DOCKER_DIR && docker compose logs -f"
+    echo "   - 停止服务: cd $DOCKER_DIR && docker compose down"
+    echo "   - 重启服务: cd $DOCKER_DIR && docker compose restart"
     echo ""
     echo "📝 Nginx 日志:"
     echo "   - 访问日志: docker exec idoctor_commercial_nginx tail -f /var/log/nginx/idoctor-commercial-access.log"

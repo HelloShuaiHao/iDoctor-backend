@@ -12,6 +12,8 @@ import {
   Receipt,
   ArrowRight,
   TrendingUp,
+  FileText,
+  HelpCircle,
 } from 'lucide-react';
 
 const DashboardPage: React.FC = () => {
@@ -144,8 +146,11 @@ const DashboardPage: React.FC = () => {
         <div className="mt-12">
           <h2 className="text-2xl font-bold mb-6">快速操作</h2>
           <div className="grid md:grid-cols-3 gap-4">
-            <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-primary/30">
               <CardHeader>
+                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-4">
+                  <FileText className="h-6 w-6 text-white" />
+                </div>
                 <CardTitle className="text-lg">查看文档</CardTitle>
                 <CardDescription>
                   了解如何使用 iDoctor API
@@ -153,8 +158,11 @@ const DashboardPage: React.FC = () => {
               </CardHeader>
             </Card>
 
-            <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-primary/30">
               <CardHeader>
+                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center mb-4">
+                  <HelpCircle className="h-6 w-6 text-white" />
+                </div>
                 <CardTitle className="text-lg">联系支持</CardTitle>
                 <CardDescription>
                   获取技术支持和帮助
@@ -162,11 +170,14 @@ const DashboardPage: React.FC = () => {
               </CardHeader>
             </Card>
 
-            <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-primary/30">
               <CardHeader>
-                <CardTitle className="text-lg">升级计划</CardTitle>
+                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4">
+                  <BarChart3 className="h-6 w-6 text-white" />
+                </div>
+                <CardTitle className="text-lg">使用分析</CardTitle>
                 <CardDescription>
-                  探索更高级的订阅选项
+                  查看详细的使用统计
                 </CardDescription>
               </CardHeader>
             </Card>

@@ -17,6 +17,8 @@ export PAYMENT_SERVICE_HOST=${PAYMENT_SERVICE_HOST:-payment_service}
 export PAYMENT_SERVICE_PORT=${PAYMENT_SERVICE_PORT:-9002}
 export IDOCTOR_API_HOST=${IDOCTOR_API_HOST:-host.docker.internal}
 export IDOCTOR_API_PORT=${IDOCTOR_API_PORT:-4200}
+export SAM2_SERVICE_HOST=${SAM2_SERVICE_HOST:-sam2_service}
+export SAM2_SERVICE_PORT=${SAM2_SERVICE_PORT:-8000}
 export STATIC_ROOT=${STATIC_ROOT:-/usr/share/nginx/html}
 
 echo "配置信息:"
@@ -25,12 +27,13 @@ echo "  服务器名: ${NGINX_SERVER_NAME}"
 echo "  认证服务: ${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT}"
 echo "  支付服务: ${PAYMENT_SERVICE_HOST}:${PAYMENT_SERVICE_PORT}"
 echo "  主应用API: ${IDOCTOR_API_HOST}:${IDOCTOR_API_PORT}"
+echo "  SAM2服务: ${SAM2_SERVICE_HOST}:${SAM2_SERVICE_PORT}"
 echo "  静态文件: ${STATIC_ROOT}"
 echo "==================================="
 
 # 使用 envsubst 替换配置文件中的环境变量
 echo "生成 Nginx 配置文件..."
-envsubst '${NGINX_PORT} ${NGINX_SERVER_NAME} ${AUTH_SERVICE_HOST} ${AUTH_SERVICE_PORT} ${PAYMENT_SERVICE_HOST} ${PAYMENT_SERVICE_PORT} ${IDOCTOR_API_HOST} ${IDOCTOR_API_PORT} ${STATIC_ROOT}' \
+envsubst '${NGINX_PORT} ${NGINX_SERVER_NAME} ${AUTH_SERVICE_HOST} ${AUTH_SERVICE_PORT} ${PAYMENT_SERVICE_HOST} ${PAYMENT_SERVICE_PORT} ${IDOCTOR_API_HOST} ${IDOCTOR_API_PORT} ${SAM2_SERVICE_HOST} ${SAM2_SERVICE_PORT} ${STATIC_ROOT}' \
     < /etc/nginx/templates/default.conf.template \
     > /etc/nginx/conf.d/default.conf
 

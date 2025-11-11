@@ -372,6 +372,57 @@ server {
         proxy_request_buffering off;
     }
 
+    # SAM2 分割服务 API
+    location /api/segmentation/ {
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
+        # 使用变量让 Nginx 动态解析
+        set $sam2_backend ${SAM2_SERVICE_HOST}:${SAM2_SERVICE_PORT};
+        # 去掉 /api/segmentation/ 前缀，代理到根路径
+        rewrite ^/api/segmentation/(.*) /$1 break;
+        proxy_pass http://$sam2_backend;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Origin $http_origin;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # SAM2 分割需要较长超时时间
+        proxy_connect_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+
+        proxy_buffering off;
+        proxy_request_buffering off;
+
+        # 隐藏后端的 CORS 头，由 Nginx 统一处理（避免重复）
+        proxy_hide_header 'Access-Control-Allow-Origin';
+        proxy_hide_header 'Access-Control-Allow-Credentials';
+        proxy_hide_header 'Access-Control-Allow-Methods';
+        proxy_hide_header 'Access-Control-Allow-Headers';
+
+        # 添加 CORS 响应头（正常请求）
+        add_header 'Access-Control-Allow-Origin' $http_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+    }
+
     # CTAI 主应用 API（与 iDoctor 主应用共用后端）
     location /api/ctai/ {
         # 处理 OPTIONS 预检请求（必须在 rewrite 之前）

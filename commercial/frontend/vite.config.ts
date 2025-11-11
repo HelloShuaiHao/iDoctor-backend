@@ -24,12 +24,17 @@ export default defineConfig({
       '/api/auth': {
         target: 'http://localhost:9001',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/auth/, '')
+        rewrite: (path) => path.replace(/^\/api/, '')
       },
       '/api/payment': {
         target: 'http://localhost:9002',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/payment/, '')
+        rewrite: (path) => path.replace(/^\/api/, '')
+      },
+      '/api/segmentation': {
+        target: 'http://localhost:4200',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/segmentation/, '/api/segmentation')
       },
       '/api/idoctor': {
         target: 'http://localhost:4200',
