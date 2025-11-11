@@ -315,6 +315,13 @@ def get_sam2_client() -> SAM2Client:
     if _sam2_client is None:
         _sam2_client = SAM2Client()
 
+    # Update timeout from environment variable if it has changed
+    # This handles cases where .env is loaded after module import
+    env_timeout = int(os.getenv("SAM2_REQUEST_TIMEOUT", "30"))
+    if _sam2_client.timeout != env_timeout:
+        logger.info(f"Updating SAM2 timeout from {_sam2_client.timeout}s to {env_timeout}s")
+        _sam2_client.timeout = env_timeout
+
     return _sam2_client
 
 

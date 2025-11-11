@@ -65,7 +65,10 @@ def load_sam2_model():
         from sam2.sam2_image_predictor import SAM2ImagePredictor
 
         # Build model
-        sam2_model = build_sam2(model_path, device=device)
+        # SAM2 needs config name and checkpoint path separately
+        # For sam2.1_hiera_large, use config "sam2.1_hiera_l.yaml"
+        model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"  # Config file in SAM2 package
+        sam2_model = build_sam2(model_cfg, ckpt_path=model_path, device=device)
         sam2_predictor = SAM2ImagePredictor(sam2_model)
 
         model_loaded = True

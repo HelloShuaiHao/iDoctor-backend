@@ -65,3 +65,11 @@ Thumbs.db
 
 # DICOM
 .dcm
+
+# SAM2 模型文件 (大文件)
+models/
+*.pt
+*.pth
+*.ckpt
+sam2_models/
+checkpoints/
