@@ -66,8 +66,8 @@ server {
     # ==================== API 反向代理 ====================
 
     # 认证服务 API - 认证相关
-    location /api/auth/ {
-        # 处理 OPTIONS 预检请求（必须在 rewrite 之前）
+    location ~ ^/api/(auth/.*)$ {
+        # 处理 OPTIONS 预检请求
         if ($request_method = 'OPTIONS') {
             add_header 'Access-Control-Allow-Origin' $http_origin always;
             add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
@@ -79,11 +79,8 @@ server {
             return 204;
         }
 
-        # 使用变量让 Nginx 动态解析，避免启动时解析失败
-        set $auth_backend ${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT};
-        # 去掉 /api/ 前缀，保留 /auth/（使用变量时必须手动rewrite）
-        rewrite ^/api/(.*)$ /$1 break;
-        proxy_pass http://$auth_backend;
+        # 使用正则捕获组，自动保留查询参数
+        proxy_pass http://${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT}/$1$is_args$args;
         proxy_http_version 1.1;
 
         # 保留原始请求信息
@@ -131,6 +128,18 @@ server {
 
         proxy_buffering off;
         proxy_request_buffering off;
+
+        # 隐藏后端的 CORS 头，由 Nginx 统一处理（避免重复）
+        proxy_hide_header 'Access-Control-Allow-Origin';
+        proxy_hide_header 'Access-Control-Allow-Credentials';
+        proxy_hide_header 'Access-Control-Allow-Methods';
+        proxy_hide_header 'Access-Control-Allow-Headers';
+
+        # 添加 CORS 响应头（正常请求）
+        add_header 'Access-Control-Allow-Origin' $http_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
     }
 
     # 认证服务 API - API密钥管理
@@ -315,6 +324,18 @@ server {
 
         proxy_buffering off;
         proxy_request_buffering off;
+
+        # 隐藏后端的 CORS 头，由 Nginx 统一处理（避免重复）
+        proxy_hide_header 'Access-Control-Allow-Origin';
+        proxy_hide_header 'Access-Control-Allow-Credentials';
+        proxy_hide_header 'Access-Control-Allow-Methods';
+        proxy_hide_header 'Access-Control-Allow-Headers';
+
+        # 添加 CORS 响应头（正常请求）
+        add_header 'Access-Control-Allow-Origin' $http_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
     }
 
     # iDoctor 主应用 API
@@ -388,6 +409,18 @@ server {
 
         proxy_buffering off;
         proxy_request_buffering off;
+
+        # 隐藏后端的 CORS 头，由 Nginx 统一处理（避免重复）
+        proxy_hide_header 'Access-Control-Allow-Origin';
+        proxy_hide_header 'Access-Control-Allow-Credentials';
+        proxy_hide_header 'Access-Control-Allow-Methods';
+        proxy_hide_header 'Access-Control-Allow-Headers';
+
+        # 添加 CORS 响应头（正常请求）
+        add_header 'Access-Control-Allow-Origin' $http_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
     }
 
     # ==================== CTAI_web 前端代理 ====================

@@ -79,7 +79,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         # 从 commercial/.env 文件读取配置
-        env_file="../.env",
+        env_file="commercial/.env",
         case_sensitive=True,
         env_parse_none_str='null',
         extra='ignore'  # 忽略 .env 中未定义的额外字段

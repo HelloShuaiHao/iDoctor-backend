@@ -115,8 +115,9 @@ export default {
           this.$root.$emit('user-logged-in')
 
           // 跳转到首页（使用路由，不刷新页面）
+          // 使用 catch 捕获重定向警告，避免控制台报错
           setTimeout(() => {
-            this.$router.push('/')
+            this.$router.push('/').catch(() => {})
           }, 500)
         } catch (error) {
           console.error('Login error:', error)

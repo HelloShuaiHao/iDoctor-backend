@@ -10,6 +10,7 @@ export default {
   data() {
     return {
       msg: "Copyright 2025 © 肌少症诊断系统 版权所有",
+      currentYear: new Date().getFullYear(),
     };
   },
 };

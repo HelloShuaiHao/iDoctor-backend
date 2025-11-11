@@ -36,9 +36,8 @@ axios.interceptors.response.use(
           throw new Error('No refresh token')
         }
 
-        const response = await axios.post(`${AUTH_BASE_URL}/auth/refresh`, {
-          refresh_token: refreshToken
-        })
+        // FastAPI expects query parameter
+        const response = await axios.post(`${AUTH_BASE_URL}/refresh?refresh_token=${encodeURIComponent(refreshToken)}`)
 
         // 更新 token
         localStorage.setItem('access_token', response.data.access_token)

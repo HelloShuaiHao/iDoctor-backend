@@ -13,7 +13,7 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 // ...existing code...
 export default {
-  name: "肌少症诊断系统",
+  name: "SarcopeniaDiagnosisSystem",
   components: {
     "app-header": Header,
     "app-footer": Footer,
