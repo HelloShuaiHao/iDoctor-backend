@@ -228,12 +228,15 @@ export async function getUploadStatus(upload_id) {
 // ==================== SAM2 分割 API ====================
 
 /**
- * SAM2 一键分割
+ * SAM2 分割 (支持交互式点击)
  * @param {Object} params - 参数对象
  * @param {Blob|File} params.imageFile - 图像文件对象
  * @param {string} params.imageType - 图像类型 ("L3", "middle", "auto")
  * @param {string} params.patientId - 患者ID (可选)
  * @param {string} params.sliceIndex - 切片索引 (可选)
+ * @param {Array} params.clickPoints - 点击坐标数组 (可选)
+ *                例: [{x: 100, y: 200, label: 1}]
+ *                label: 1=前景点, 0=背景点
  * @returns {Promise<Object>} - 返回分割结果
  * @returns {string} .mask_data - Base64 编码的 mask PNG 图像
  * @returns {number} .confidence_score - 置信度 (0.0-1.0)
@@ -241,7 +244,7 @@ export async function getUploadStatus(upload_id) {
  * @returns {boolean} .cached - 是否来自缓存
  * @returns {Object} .bounding_box - 边界框 {x, y, width, height}
  */
-export async function sam2Segment({ imageFile, imageType = 'auto', patientId = null, sliceIndex = null }) {
+export async function sam2Segment({ imageFile, imageType = 'auto', patientId = null, sliceIndex = null, clickPoints = null }) {
   try {
     const formData = new FormData()
     formData.append('file', imageFile)
@@ -255,6 +258,11 @@ export async function sam2Segment({ imageFile, imageType = 'auto', patientId = n
       formData.append('slice_index', sliceIndex)
     }
 
+    // 添加点击坐标
+    if (clickPoints && clickPoints.length > 0) {
+      formData.append('click_points', JSON.stringify(clickPoints))
+    }
+
     const response = await axios.post(
       `${BASE_URL}/api/segmentation/sam2`,
       formData,
@@ -262,7 +270,7 @@ export async function sam2Segment({ imageFile, imageType = 'auto', patientId = n
         headers: {
           'Content-Type': 'multipart/form-data'
         },
-        timeout: 35000 // 35秒超时 (服务端30秒 + 5秒缓冲)
+        timeout: 125000 // 125秒超时 (服务端120秒 + 5秒缓冲)
       }
     )
 

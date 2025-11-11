@@ -20,6 +20,7 @@
         <canvas
           ref="canvas"
           class="draw-canvas"
+          :class="{ 'click-mode': sam2ClickMode }"
           @mousedown="onDown"
           @mousemove="onMove"
           @mouseup="onUp"
@@ -30,7 +31,13 @@
     </div>
 
     <div class="tips">
-      {{ $t('editor.tips') }}
+      <template v-if="sam2ClickMode">
+        <span style="color: #67C23A; font-weight: bold;">SAM2交互模式:</span>
+        左键点击肌肉区域(前景点)，右键点击背景区域，然后点击"执行分割"
+      </template>
+      <template v-else>
+        {{ $t('editor.tips') }}
+      </template>
     </div>
 
     <span slot="footer" class="footer-bar">
@@ -40,18 +47,35 @@
         </el-button>
         <el-button
           size="mini"
-          type="warning"
+          :type="sam2ClickMode ? 'success' : 'warning'"
           icon="el-icon-magic-stick"
           :disabled="!imageUrl || sam2Processing"
-          :loading="sam2Processing"
-          @click="runSam2Segment"
+          @click="toggleSam2ClickMode"
         >
-          {{ sam2Processing ? '分割中...' : 'AI一键分割' }}
+          {{ sam2ClickMode ? '点击模式(已启用)' : 'SAM2交互分割' }}
         </el-button>
-        <el-button size="mini" :disabled="!rects.length" @click="undo">
+        <el-button
+          v-if="sam2ClickMode"
+          size="mini"
+          type="primary"
+          :disabled="clickPoints.length === 0 || sam2Processing"
+          :loading="sam2Processing"
+          @click="runSam2SegmentWithClicks"
+        >
+          {{ sam2Processing ? `分割中...` : `执行分割(${clickPoints.length}个点)` }}
+        </el-button>
+        <el-button
+          v-if="sam2ClickMode"
+          size="mini"
+          :disabled="clickPoints.length === 0"
+          @click="clearClickPoints"
+        >
+          清除点击
+        </el-button>
+        <el-button v-if="!sam2ClickMode" size="mini" :disabled="!rects.length" @click="undo">
           {{ $t('actions.undo') }}
         </el-button>
-        <el-button size="mini" :disabled="!rects.length" @click="clearRects">
+        <el-button v-if="!sam2ClickMode" size="mini" :disabled="!rects.length" @click="clearRects">
           {{ $t('actions.clear') }}
         </el-button>
       </div>
@@ -98,6 +122,9 @@ export default {
       drawing: false,
       startPoint: null,
       currentRect: null,
+      // SAM2交互模式
+      sam2ClickMode: false, // 是否处于SAM2点击模式
+      clickPoints: [], // 用户点击的点 [{x, y, label}]
     };
   },
   watch: {
@@ -180,12 +207,25 @@ export default {
     },
     onDown(e) {
       if (!this.imageUrl) return;
+
+      // SAM2点击模式: 记录点击点
+      if (this.sam2ClickMode) {
+        e.preventDefault();
+        const { x, y } = this.canvasToImageCoords(e);
+        const label = e.button === 2 ? 0 : 1; // 右键=背景(0), 左键=前景(1)
+        this.clickPoints.push({ x, y, label });
+        this.redraw();
+        return;
+      }
+
+      // 矩形绘制模式
       const { x, y } = this.canvasToImageCoords(e);
       this.drawing = true;
       this.startPoint = { x, y };
       this.currentRect = null;
     },
     onMove(e) {
+      if (this.sam2ClickMode) return; // SAM2模式不需要move
       if (!this.drawing) return;
       const { x, y } = this.canvasToImageCoords(e);
       this.currentRect = {
@@ -197,6 +237,7 @@ export default {
       this.redraw();
     },
     onUp() {
+      if (this.sam2ClickMode) return; // SAM2模式不需要up
       if (!this.drawing) return;
       this.drawing = false;
       if (this.currentRect) {
@@ -216,29 +257,66 @@ export default {
     },
     redraw() {
       const cv = this.$refs.canvas;
-      if (!cv) return;
+      if (!cv) {
+        console.warn('Canvas ref not found, cannot redraw');
+        return;
+      }
       const ctx = cv.getContext("2d");
       ctx.clearRect(0, 0, cv.width, cv.height);
       ctx.save();
       ctx.scale(this.scale, this.scale);
-      // 已完成矩形
-      for (const r of this.rects) {
-        ctx.strokeStyle = "rgba(0,200,0,0.95)";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([]);
-        ctx.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
-        ctx.fillStyle = "rgba(0,200,0,0.18)";
-        ctx.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+
+      console.log('Redrawing:', {
+        mode: this.sam2ClickMode ? 'SAM2' : 'Rectangle',
+        clickPointsCount: this.clickPoints.length,
+        rectsCount: this.rects.length,
+        scale: this.scale
+      });
+
+      // SAM2点击模式: 绘制点击点
+      if (this.sam2ClickMode) {
+        for (const pt of this.clickPoints) {
+          // label=1(前景)绿色, label=0(背景)红色
+          const color = pt.label === 1 ? 'rgba(0,255,0,0.8)' : 'rgba(255,0,0,0.8)';
+          const outerColor = pt.label === 1 ? 'rgba(0,200,0,1)' : 'rgba(200,0,0,1)';
+
+          // 绘制外圈
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 8, 0, 2 * Math.PI);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.strokeStyle = outerColor;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // 绘制中心点
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 2, 0, 2 * Math.PI);
+          ctx.fillStyle = 'white';
+          ctx.fill();
+        }
+      } else {
+        // 矩形模式: 绘制矩形
+        // 已完成矩形
+        for (const r of this.rects) {
+          ctx.strokeStyle = "rgba(0,200,0,0.95)";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([]);
+          ctx.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+          ctx.fillStyle = "rgba(0,200,0,0.18)";
+          ctx.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+        }
+        // 正在绘制
+        if (this.currentRect) {
+          const r = this.normalize(this.currentRect);
+          ctx.strokeStyle = "rgba(255,180,0,0.95)";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+          ctx.setLineDash([]);
+        }
       }
-      // 正在绘制
-      if (this.currentRect) {
-        const r = this.normalize(this.currentRect);
-        ctx.strokeStyle = "rgba(255,180,0,0.95)";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 4]);
-        ctx.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
-        ctx.setLineDash([]);
-      }
+
       ctx.restore();
     },
     undo() {
@@ -294,7 +372,99 @@ export default {
         );
       });
     },
-    // SAM2 一键分割
+    // 切换SAM2点击模式
+    toggleSam2ClickMode() {
+      this.sam2ClickMode = !this.sam2ClickMode;
+      if (this.sam2ClickMode) {
+        // 进入点击模式时清空点击点
+        this.clickPoints = [];
+        // 禁用右键菜单
+        const canvas = this.$refs.canvas;
+        if (canvas) {
+          canvas.oncontextmenu = (e) => {
+            e.preventDefault();
+            return false;
+          };
+        }
+        this.$message.info('已进入SAM2交互模式，左键点击肌肉区域，右键点击背景区域');
+      } else {
+        // 退出点击模式
+        const canvas = this.$refs.canvas;
+        if (canvas) {
+          canvas.oncontextmenu = null;
+        }
+      }
+      this.redraw();
+    },
+    // 清除点击点
+    clearClickPoints() {
+      this.clickPoints = [];
+      this.redraw();
+    },
+    // SAM2交互分割（带点击点）
+    async runSam2SegmentWithClicks() {
+      if (this.clickPoints.length === 0) {
+        this.$message.warning('请至少点击一个点');
+        return;
+      }
+
+      this.sam2Processing = true;
+
+      try {
+        // 将当前图像转换为Blob
+        const response = await fetch(this.imageUrl);
+        const imageBlob = await response.blob();
+
+        // 调用SAM2 API with click points
+        const result = await sam2Segment({
+          imageFile: imageBlob,
+          imageType: 'L3',
+          patientId: this.patient,
+          sliceIndex: this.date,
+          clickPoints: this.clickPoints // 传递点击点
+        });
+
+        // 显示处理时间和置信度
+        const timeMsg = result.cached ? '(缓存)' : `(${result.processing_time_ms}ms)`;
+        this.$message.success(
+          `AI分割完成 ${timeMsg} 置信度: ${(result.confidence_score * 100).toFixed(1)}%`
+        );
+
+        // 解码mask_data (base64 PNG)
+        console.log('SAM2 result:', {
+          confidence: result.confidence_score,
+          time: result.processing_time_ms,
+          cached: result.cached,
+          bbox: result.bounding_box,
+          maskDataLength: result.mask_data ? result.mask_data.length : 0
+        });
+
+        const maskImage = new Image();
+        maskImage.onload = () => {
+          console.log('Mask image loaded successfully');
+
+          // 先退出SAM2模式，进入矩形编辑模式
+          this.sam2ClickMode = false;
+          this.clickPoints = [];
+
+          // 然后分析mask图像，提取白色区域作为矩形
+          // 这样redraw会使用矩形模式来绘制
+          this.extractRectsFromMask(maskImage);
+        };
+        maskImage.onerror = (e) => {
+          console.error('Mask image load error:', e);
+          throw new Error('Mask图像加载失败');
+        };
+        maskImage.src = `data:image/png;base64,${result.mask_data}`;
+
+      } catch (error) {
+        console.error('SAM2 分割失败:', error);
+        this.$message.error(error.message || 'AI分割失败，请重试');
+      } finally {
+        this.sam2Processing = false;
+      }
+    },
+    // SAM2 一键分割 (自动模式 - 已弃用)
     async runSam2Segment() {
       // 如果已有标注，需要确认
       if (this.rects.length > 0) {
@@ -354,6 +524,8 @@ export default {
     },
     // 从mask图像提取矩形区域
     extractRectsFromMask(maskImage) {
+      console.log('Extracting rects from mask, image size:', maskImage.width, 'x', maskImage.height);
+
       const canvas = document.createElement('canvas');
       canvas.width = maskImage.width;
       canvas.height = maskImage.height;
@@ -366,6 +538,7 @@ export default {
       // 找到mask的边界
       let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
       let hasWhitePixel = false;
+      let whiteCount = 0;
 
       for (let y = 0; y < canvas.height; y++) {
         for (let x = 0; x < canvas.width; x++) {
@@ -375,6 +548,7 @@ export default {
           // 白色像素 (假设mask的前景是白色或亮色)
           if (r > 128) {
             hasWhitePixel = true;
+            whiteCount++;
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
             if (y < minY) minY = y;
@@ -383,18 +557,42 @@ export default {
         }
       }
 
+      console.log('Mask analysis:', {
+        hasWhitePixel,
+        whiteCount,
+        totalPixels: canvas.width * canvas.height,
+        bounds: hasWhitePixel ? { minX, minY, maxX, maxY } : null
+      });
+
       if (hasWhitePixel) {
-        // 清除现有矩形并添加新的
-        this.rects = [{
+        const rect = {
           x1: minX,
           y1: minY,
           x2: maxX,
           y2: maxY
-        }];
+        };
 
-        this.redraw();
+        // 清除现有矩形并添加新的
+        this.rects = [rect];
+
+        console.log('Created rect:', {
+          x1: rect.x1,
+          y1: rect.y1,
+          x2: rect.x2,
+          y2: rect.y2,
+          width: rect.x2 - rect.x1,
+          height: rect.y2 - rect.y1
+        });
+
+        // 确保在下一个tick后重绘，让Vue完成响应式更新
+        this.$nextTick(() => {
+          console.log('Calling redraw after nextTick');
+          this.redraw();
+        });
+
         this.$message.success(`已提取分割区域: ${maxX - minX} x ${maxY - minY} 像素`);
       } else {
+        console.warn('No white pixels found in mask');
         this.$message.warning('未检测到分割区域，请手动标注');
       }
     },
@@ -439,6 +637,9 @@ export default {
   top: 0;
   cursor: crosshair;
   z-index: 2;
+}
+.draw-canvas.click-mode {
+  cursor: pointer;
 }
 .footer-bar {
   display: flex;

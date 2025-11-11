@@ -6,6 +6,7 @@ Provides REST API for automatic image segmentation using SAM2 model.
 import os
 import time
 import logging
+import json
 from typing import Optional
 from io import BytesIO
 import base64
@@ -79,6 +80,49 @@ def load_sam2_model():
         logger.warning("Service will run in mock mode for development/testing")
         model_loaded = False
 
+def detect_muscle_centroid(image_array: np.ndarray) -> tuple:
+    """
+    Detect muscle region centroid using simple image processing.
+    Returns (x, y) coordinates of the detected centroid.
+    """
+    try:
+        # Convert to grayscale
+        if len(image_array.shape) == 3:
+            gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = image_array
+
+        # Apply Otsu thresholding to detect tissue
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Find contours
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if not contours:
+            # Fallback to image center
+            h, w = image_array.shape[:2]
+            return (w // 2, h // 2)
+
+        # Find largest contour (likely the main muscle group)
+        largest_contour = max(contours, key=cv2.contourArea)
+
+        # Calculate centroid
+        M = cv2.moments(largest_contour)
+        if M["m00"] != 0:
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+            logger.info(f"Detected muscle centroid at ({cx}, {cy})")
+            return (cx, cy)
+        else:
+            # Fallback to image center
+            h, w = image_array.shape[:2]
+            return (w // 2, h // 2)
+
+    except Exception as e:
+        logger.warning(f"Muscle detection failed: {e}, using image center")
+        h, w = image_array.shape[:2]
+        return (w // 2, h // 2)
+
 def mock_segmentation(image_array: np.ndarray) -> np.ndarray:
     """
     Mock segmentation for development when model is not available.
@@ -102,10 +146,21 @@ def mock_segmentation(image_array: np.ndarray) -> np.ndarray:
 
     return mask
 
-def perform_sam2_segmentation(image_array: np.ndarray) -> tuple[np.ndarray, float]:
+def perform_sam2_segmentation(
+    image_array: np.ndarray,
+    click_points: list = None
+) -> tuple[np.ndarray, float]:
     """
     Perform SAM2 segmentation on image.
-    Returns (mask, confidence_score)
+
+    Args:
+        image_array: Input image as numpy array (H, W, C)
+        click_points: Optional list of click points [{"x": int, "y": int, "label": int}]
+                     label: 1 = foreground, 0 = background
+                     If None, uses image center as default
+
+    Returns:
+        (mask, confidence_score)
     """
     if not model_loaded or sam2_predictor is None:
         mask = mock_segmentation(image_array)
@@ -115,10 +170,20 @@ def perform_sam2_segmentation(image_array: np.ndarray) -> tuple[np.ndarray, floa
         # Set image for SAM2
         sam2_predictor.set_image(image_array)
 
-        # Use automatic mask generation (point prompts at image center)
+        # Prepare point prompts
         h, w = image_array.shape[:2]
-        point_coords = np.array([[w // 2, h // 2]])
-        point_labels = np.array([1])  # Foreground point
+
+        if click_points and len(click_points) > 0:
+            # Use user-provided click points
+            point_coords = np.array([[p["x"], p["y"]] for p in click_points])
+            point_labels = np.array([p["label"] for p in click_points])
+            logger.info(f"Using {len(click_points)} user-provided click points")
+        else:
+            # Smart automatic detection: find muscle centroid
+            cx, cy = detect_muscle_centroid(image_array)
+            point_coords = np.array([[cx, cy]])
+            point_labels = np.array([1])  # Foreground point
+            logger.info(f"Using smart muscle detection at ({cx}, {cy})")
 
         # Predict mask
         masks, scores, _ = sam2_predictor.predict(
@@ -182,7 +247,8 @@ async def health_check():
 async def segment_image(
     file: UploadFile = File(...),
     image_type: str = Form("auto"),
-    return_format: str = Form("base64")
+    return_format: str = Form("base64"),
+    click_points: str = Form(None)
 ):
     """
     Segment an image using SAM2.
@@ -191,6 +257,9 @@ async def segment_image(
         file: Image file (PNG, JPEG, or DICOM)
         image_type: Type hint for segmentation ("L3", "middle", or "auto")
         return_format: Response format ("png" or "base64")
+        click_points: Optional JSON string of click points
+                     e.g., '[{"x": 100, "y": 200, "label": 1}]'
+                     label: 1 = foreground, 0 = background
 
     Returns:
         SegmentationResponse with mask data and metadata
@@ -216,10 +285,19 @@ async def segment_image(
             # RGBA to RGB
             image_array = cv2.cvtColor(image_array, cv2.COLOR_RGBA2RGB)
 
+        # Parse click points if provided
+        parsed_click_points = None
+        if click_points:
+            try:
+                parsed_click_points = json.loads(click_points)
+                logger.info(f"Parsed {len(parsed_click_points)} click points")
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse click_points JSON: {e}")
+
         logger.info(f"Processing image: shape={image_array.shape}, type={image_type}")
 
-        # Perform segmentation
-        mask, confidence = perform_sam2_segmentation(image_array)
+        # Perform segmentation with optional click points
+        mask, confidence = perform_sam2_segmentation(image_array, parsed_click_points)
 
         # Calculate bounding box
         bbox = calculate_bounding_box(mask)

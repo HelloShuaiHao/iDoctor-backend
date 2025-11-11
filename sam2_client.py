@@ -108,17 +108,29 @@ class SAM2Client:
         # Note: The startup health check should set _is_healthy and _last_health_check
         return False
 
-    def _compute_image_hash(self, image_data: bytes) -> str:
+    def _compute_cache_key(self, image_data: bytes, click_points: list = None) -> str:
         """
-        Compute hash of image data for caching.
+        Compute cache key including image data and click points.
 
         Args:
             image_data: Raw image bytes
+            click_points: Optional list of click points
 
         Returns:
             SHA256 hash as hex string
         """
-        return hashlib.sha256(image_data).hexdigest()
+        hasher = hashlib.sha256()
+        hasher.update(image_data)
+
+        # Include click points in cache key if provided
+        if click_points:
+            import json
+            # Sort points to ensure consistent ordering
+            sorted_points = sorted(click_points, key=lambda p: (p.get('x', 0), p.get('y', 0), p.get('label', 1)))
+            points_str = json.dumps(sorted_points, sort_keys=True)
+            hasher.update(points_str.encode('utf-8'))
+
+        return hasher.hexdigest()
 
     def _get_from_cache(self, image_hash: str) -> Optional[Dict[str, Any]]:
         """
@@ -166,7 +178,8 @@ class SAM2Client:
         image_path: str = None,
         image_data: bytes = None,
         image_type: str = "auto",
-        use_cache: bool = True
+        use_cache: bool = True,
+        click_points: list = None
     ) -> Tuple[Optional[bytes], Dict[str, Any]]:
         """
         Segment an image using SAM2 service.
@@ -176,6 +189,8 @@ class SAM2Client:
             image_data: Raw image bytes (if image_path not provided)
             image_type: Type hint for segmentation ("L3", "middle", or "auto")
             use_cache: Whether to use caching
+            click_points: Optional list of click points [{"x": int, "y": int, "label": int}]
+                         label: 1 = foreground, 0 = background
 
         Returns:
             Tuple of (mask_image_bytes, metadata_dict)
@@ -185,7 +200,14 @@ class SAM2Client:
         if not self.enabled:
             return None, {"error": "SAM2 service is disabled"}
 
-        # If service is not available or health check is stale, try checking again
+        # Always check health if cache is stale (older than 5 minutes)
+        if self._last_health_check:
+            age = (datetime.now() - self._last_health_check).total_seconds()
+            if age >= 300:  # 5 minutes or older - refresh health check
+                logger.info(f"SAM2 health check cache expired ({age:.0f}s old), refreshing...")
+                await self.check_health()
+
+        # If service is not available, try checking health
         if not self.is_available():
             logger.info("SAM2 service not available, attempting health check...")
             health_ok = await self.check_health()
@@ -202,12 +224,13 @@ class SAM2Client:
                 with open(image_path, "rb") as f:
                     image_data = f.read()
 
-            # Check cache
-            image_hash = self._compute_image_hash(image_data)
+            # Check cache (include click points in cache key)
+            cache_key = self._compute_cache_key(image_data, click_points)
             if use_cache:
-                cached_result = self._get_from_cache(image_hash)
+                cached_result = self._get_from_cache(cache_key)
                 if cached_result:
                     cached_result["cached"] = True
+                    logger.info(f"Using cached result for image+clicks: {cache_key[:8]}...")
                     return base64.b64decode(cached_result["mask_data"]), cached_result
 
             # Prepare request
@@ -216,6 +239,12 @@ class SAM2Client:
                 "image_type": image_type,
                 "return_format": "base64"
             }
+
+            # Add click points if provided
+            if click_points:
+                import json
+                data["click_points"] = json.dumps(click_points)
+                logger.info(f"Sending {len(click_points)} click points to SAM2 service")
 
             # Send request to SAM2 service
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -248,7 +277,7 @@ class SAM2Client:
             if use_cache:
                 cache_data = metadata.copy()
                 cache_data["mask_data"] = mask_base64
-                self._save_to_cache(image_hash, cache_data)
+                self._save_to_cache(cache_key, cache_data)
 
             logger.info(
                 f"SAM2 segmentation completed: "

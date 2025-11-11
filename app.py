@@ -887,16 +887,20 @@ async def sam2_segment(
     file: UploadFile = File(...),
     image_type: str = Form("auto"),
     patient_id: str = Form(None),
-    slice_index: str = Form(None)
+    slice_index: str = Form(None),
+    click_points: str = Form(None)
 ):
     """
-    SAM2 一键分割端点
+    SAM2 分割端点 (支持交互式点击)
 
     Args:
         file: 图像文件 (PNG, JPEG)
         image_type: 图像类型 ("L3" 或 "middle" 或 "auto")
         patient_id: 患者ID (可选)
         slice_index: 切片索引 (可选)
+        click_points: 点击坐标 JSON 字符串 (可选)
+                     格式: '[{"x": 100, "y": 200, "label": 1}]'
+                     label: 1=前景点, 0=背景点
 
     Returns:
         JSON response with mask_data (base64), confidence_score, processing_time_ms, cached, bounding_box
@@ -923,11 +927,21 @@ async def sam2_segment(
                 detail=f"Invalid image format. Expected image/*, got {file.content_type}"
             )
 
+        # 解析点击坐标
+        parsed_click_points = None
+        if click_points:
+            try:
+                parsed_click_points = json.loads(click_points)
+                logger.info(f"Received {len(parsed_click_points)} click points for segmentation")
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse click_points: {e}")
+
         # 调用 SAM2 分割
         mask_bytes, metadata = await sam2_client.segment_image(
             image_data=image_data,
             image_type=image_type,
-            use_cache=True
+            use_cache=True,
+            click_points=parsed_click_points
         )
 
         if mask_bytes is None:
