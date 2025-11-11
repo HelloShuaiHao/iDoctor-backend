@@ -104,6 +104,8 @@ class SAM2Client:
             if age < 300:  # 5 minutes
                 return self._is_healthy
 
+        # If no recent health check or cache expired, assume unavailable
+        # Note: The startup health check should set _is_healthy and _last_health_check
         return False
 
     def _compute_image_hash(self, image_data: bytes) -> str:
@@ -183,8 +185,12 @@ class SAM2Client:
         if not self.enabled:
             return None, {"error": "SAM2 service is disabled"}
 
+        # If service is not available or health check is stale, try checking again
         if not self.is_available():
-            return None, {"error": "SAM2 service is unavailable"}
+            logger.info("SAM2 service not available, attempting health check...")
+            health_ok = await self.check_health()
+            if not health_ok:
+                return None, {"error": "SAM2 service is unavailable"}
 
         start_time = time.time()
 
