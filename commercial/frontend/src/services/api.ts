@@ -1,26 +1,29 @@
 import axios, { type AxiosInstance } from 'axios';
 
-// 创建认证 API 实例
+// Nginx 统一网关地址
+const NGINX_BASE_URL = import.meta.env.VITE_NGINX_BASE_URL || 'http://localhost:3000';
+
+// 创建认证 API 实例（通过 Nginx /api/auth/ 代理）
 export const authAPI: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_AUTH_API_URL || 'http://localhost:9001',
+  baseURL: `${NGINX_BASE_URL}/api`,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// 创建支付 API 实例
+// 创建支付 API 实例（通过 Nginx /api/payments/, /api/plans/, /api/subscriptions/ 代理）
 export const paymentAPI: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_PAYMENT_API_URL || 'http://localhost:9002',
+  baseURL: `${NGINX_BASE_URL}/api`,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// 创建 iDoctor 主应用 API 实例（用于配额、处理等功能）
+// 创建 iDoctor 主应用 API 实例（通过 Nginx /api/ctai/ 或 /api/idoctor/ 代理）
 export const idoctorAPI: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_IDOCTOR_API_URL || 'http://localhost:4200',
+  baseURL: `${NGINX_BASE_URL}/api`,
   timeout: 30000, // 处理请求可能需要更长时间
   headers: {
     'Content-Type': 'application/json',
@@ -68,7 +71,7 @@ authAPI.interceptors.response.use(
       if (refreshToken) {
         try {
           const response = await axios.post(
-            `${import.meta.env.VITE_AUTH_API_URL}/auth/refresh`,
+            `${NGINX_BASE_URL}/api/auth/refresh`,
             {},
             {
               headers: {
@@ -110,7 +113,7 @@ paymentAPI.interceptors.response.use(
       if (refreshToken) {
         try {
           const response = await axios.post(
-            `${import.meta.env.VITE_AUTH_API_URL}/auth/refresh`,
+            `${NGINX_BASE_URL}/api/auth/refresh`,
             {},
             {
               headers: {
@@ -161,7 +164,7 @@ idoctorAPI.interceptors.response.use(
       if (refreshToken) {
         try {
           const response = await axios.post(
-            `${import.meta.env.VITE_AUTH_API_URL}/auth/refresh`,
+            `${NGINX_BASE_URL}/api/auth/refresh`,
             {},
             {
               headers: {

@@ -7,9 +7,9 @@ import axios from 'axios';
 import type { ClickPoint, SegmentationResult } from '@/types/demo';
 
 // 创建 SAM2 专用的 API 实例
-// 使用主后端的统一端点，避免 CORS 问题
+// 通过 Nginx 统一网关访问，避免 CORS 问题
 const sam2API = axios.create({
-  baseURL: 'http://localhost:4200', // 通过主后端代理
+  baseURL: import.meta.env.VITE_NGINX_BASE_URL || 'http://localhost:3000',
   timeout: 30000,
 });
 
