@@ -88,9 +88,10 @@ class SAM2Client:
             self._is_healthy = False
             return False
 
-    def is_available(self) -> bool:
+    async def is_available(self) -> bool:
         """
         Check if SAM2 service is available (enabled and recently healthy).
+        Automatically refreshes health check if cache is stale.
 
         Returns:
             True if available, False otherwise
@@ -98,15 +99,15 @@ class SAM2Client:
         if not self.enabled:
             return False
 
-        # Consider service available if last health check was successful within 5 minutes
+        # If we have a recent health check (within 5 minutes), use cached result
         if self._last_health_check:
             age = (datetime.now() - self._last_health_check).total_seconds()
             if age < 300:  # 5 minutes
                 return self._is_healthy
 
-        # If no recent health check or cache expired, assume unavailable
-        # Note: The startup health check should set _is_healthy and _last_health_check
-        return False
+        # Cache is stale or no health check yet - refresh it
+        logger.info("Health check cache is stale, refreshing...")
+        return await self.check_health()
 
     def _compute_cache_key(self, image_data: bytes, click_points: list = None) -> str:
         """
@@ -200,19 +201,9 @@ class SAM2Client:
         if not self.enabled:
             return None, {"error": "SAM2 service is disabled"}
 
-        # Always check health if cache is stale (older than 5 minutes)
-        if self._last_health_check:
-            age = (datetime.now() - self._last_health_check).total_seconds()
-            if age >= 300:  # 5 minutes or older - refresh health check
-                logger.info(f"SAM2 health check cache expired ({age:.0f}s old), refreshing...")
-                await self.check_health()
-
-        # If service is not available, try checking health
-        if not self.is_available():
-            logger.info("SAM2 service not available, attempting health check...")
-            health_ok = await self.check_health()
-            if not health_ok:
-                return None, {"error": "SAM2 service is unavailable"}
+        # Check if service is available (will auto-refresh health check if needed)
+        if not await self.is_available():
+            return None, {"error": "SAM2 service is unavailable"}
 
         start_time = time.time()
 

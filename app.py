@@ -910,7 +910,8 @@ async def sam2_segment(
 
     sam2_client = get_sam2_client()
 
-    if not sam2_client.is_available():
+    # Check availability (async - will auto-refresh health check if needed)
+    if not await sam2_client.is_available():
         raise HTTPException(
             status_code=503,
             detail="SAM2 service is currently unavailable. Please try again later."
