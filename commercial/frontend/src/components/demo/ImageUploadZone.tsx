@@ -135,15 +135,15 @@ export const ImageUploadZone: React.FC<Props> = ({ onImageLoaded }) => {
           </div>
 
           <div>
-            <h3 className="text-xl font-semibold mb-2">
+            <h3 className="text-xl font-semibold mb-2 !text-gray-900 dark:!text-gray-100">
               {isDragging ? '释放以上传' : '拖放图片到这里'}
             </h3>
-            <p className="text-sm text-muted-foreground mb-4">
+            <p className="text-sm !text-gray-600 dark:!text-gray-400 mb-4">
               或点击选择文件
             </p>
           </div>
 
-          <div className="text-xs text-muted-foreground space-y-1">
+          <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
             <p>支持格式: PNG, JPG, JPEG</p>
             <p>最大大小: 10MB</p>
             <p>最大尺寸: 2048 × 2048 像素</p>

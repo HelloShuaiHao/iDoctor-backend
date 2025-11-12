@@ -24,7 +24,7 @@ export const ResultsPanel: React.FC<Props> = ({ result }) => {
   return (
     <Card className="border-2 rounded-lg">
       <CardHeader>
-        <CardTitle className="text-sm flex items-center gap-2">
+        <CardTitle className="text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100">
           <CheckCircle2 className="h-4 w-4 text-green-500" />
           分割结果
         </CardTitle>
@@ -32,15 +32,15 @@ export const ResultsPanel: React.FC<Props> = ({ result }) => {
       <CardContent className="space-y-3">
         <div className="space-y-2 text-sm">
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">置信度:</span>
+            <span className="text-gray-700 dark:text-gray-300">置信度:</span>
             <span className={`font-semibold ${getConfidenceColor(result.confidence_score)}`}>
               {confidencePercent}%
             </span>
           </div>
 
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">处理时间:</span>
-            <div className="flex items-center gap-1">
+            <span className="text-gray-700 dark:text-gray-300">处理时间:</span>
+            <div className="flex items-center gap-1 text-gray-900 dark:text-gray-100">
               <Clock className="h-3 w-3" />
               <span className="font-medium">{timeDisplay}</span>
               {result.cached && (
@@ -52,8 +52,8 @@ export const ResultsPanel: React.FC<Props> = ({ result }) => {
           </div>
 
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">区域大小:</span>
-            <div className="flex items-center gap-1">
+            <span className="text-gray-700 dark:text-gray-300">区域大小:</span>
+            <div className="flex items-center gap-1 text-gray-900 dark:text-gray-100">
               <Box className="h-3 w-3" />
               <span className="font-medium">
                 {result.bounding_box.width} × {result.bounding_box.height}

@@ -39,7 +39,7 @@ export const LabelInputPanel: React.FC<Props> = ({
   return (
     <Card className="border-2 rounded-lg">
       <CardHeader>
-        <CardTitle className="text-sm">标签管理</CardTitle>
+        <CardTitle className="text-sm text-gray-900 dark:text-gray-100">标签管理</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex gap-2">
@@ -49,7 +49,7 @@ export const LabelInputPanel: React.FC<Props> = ({
             onChange={(e) => setLabelText(e.target.value.slice(0, MAX_LABEL_LENGTH))}
             onKeyPress={handleKeyPress}
             disabled={disabled}
-            className="text-sm"
+            className="text-sm text-gray-900 dark:text-gray-100"
           />
           <Button
             size="sm"
@@ -60,26 +60,26 @@ export const LabelInputPanel: React.FC<Props> = ({
           </Button>
         </div>
 
-        <div className="text-xs text-right text-muted-foreground">
+        <div className="text-xs text-right text-gray-600 dark:text-gray-400">
           {labelText.length}/{MAX_LABEL_LENGTH}
         </div>
 
         {labels.length > 0 && (
           <div className="pt-3 border-t space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">
+            <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
               已添加的标签:
             </div>
             <div className="flex flex-wrap gap-2">
               {labels.map((label) => (
                 <Badge
                   key={label.id}
-                  variant="secondary"
-                  className="text-xs py-1 px-2 pr-1"
+                  variant="default"
+                  className="text-xs py-1 px-2 pr-1 bg-blue-600 text-white hover:bg-blue-700"
                 >
                   {label.text}
                   <button
                     onClick={() => onRemoveLabel(label.id)}
-                    className="ml-1 hover:text-destructive"
+                    className="ml-1 hover:text-white/80"
                   >
                     <X className="h-3 w-3" />
                   </button>

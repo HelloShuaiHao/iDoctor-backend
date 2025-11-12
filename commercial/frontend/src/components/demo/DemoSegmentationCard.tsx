@@ -17,8 +17,8 @@ export const DemoSegmentationCard: React.FC = () => {
           <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-3">
             <Sparkles className="h-6 w-6 text-white" />
           </div>
-          <CardTitle className="text-xl">AI 图像分割演示</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-xl !text-gray-900 dark:!text-gray-100 font-bold">AI 图像分割演示</CardTitle>
+          <CardDescription className="!text-gray-700 dark:!text-gray-300">
             体验 SAM2 交互式智能分割技术
           </CardDescription>
         </CardHeader>

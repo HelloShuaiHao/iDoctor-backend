@@ -50,10 +50,10 @@ server {
         try_files $uri $uri/ /index.html;
         index index.html;
 
-        # 静态资源缓存
+        # 静态资源缓存（开发环境：禁用缓存以便实时看到修改）
         location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-            expires 1y;
-            add_header Cache-Control "public, immutable";
+            expires -1;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
         }
 
         # HTML 文件不缓存

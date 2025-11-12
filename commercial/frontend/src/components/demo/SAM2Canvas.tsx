@@ -221,9 +221,9 @@ export const SAM2Canvas: React.FC<Props> = ({
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
             <div className="bg-white rounded-lg p-6 text-center space-y-3">
               <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-              <div>
+              <div className="text-gray-900">
                 <p className="font-medium">AI 正在分析图像...</p>
-                <p className="text-sm text-muted-foreground">通常需要 3-5 秒</p>
+                <p className="text-sm text-gray-600">通常需要 3-5 秒</p>
               </div>
             </div>
           </div>
@@ -262,7 +262,7 @@ export const SAM2Canvas: React.FC<Props> = ({
             {labels.map((label) => (
               <div
                 key={label.id}
-                className="absolute bg-white border border-gray-300 rounded-md px-3 py-2 text-sm font-medium shadow-sm pointer-events-auto cursor-move"
+                className="absolute bg-blue-600 text-white border-2 border-blue-700 rounded-md px-3 py-2 text-sm font-medium shadow-lg pointer-events-auto cursor-move"
                 style={{
                   left: `${label.position.x * scale}px`,
                   top: `${label.position.y * scale}px`,
@@ -278,7 +278,7 @@ export const SAM2Canvas: React.FC<Props> = ({
 
       {/* Instructions and Segment Button */}
       <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
+        <div className="text-sm text-gray-700 dark:text-gray-300">
           {clickPoints.length === 0 ? (
             <span>👆 点击图像添加标记点 (左键: 前景 | 右键: 背景)</span>
           ) : (

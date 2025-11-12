@@ -31,11 +31,11 @@ export class DemoSAM2Service {
     formData.append('click_points', JSON.stringify(clickPoints)); // 后端期望 'click_points'
 
     try {
-      const response = await sam2API.post('/api/segmentation/sam2', formData, {
+      const response = await sam2API.post('/api/ctai/api/segmentation/sam2', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 30000, // 30 seconds
+        timeout: 120000, // 120 seconds
       });
 
       // Validate response
@@ -74,7 +74,7 @@ export class DemoSAM2Service {
   async checkServiceHealth(): Promise<boolean> {
     try {
       // Check SAM2 health via main backend
-      await sam2API.get('/api/segmentation/sam2/health', { timeout: 5000 });
+      await sam2API.get('/api/ctai/api/segmentation/sam2/health', { timeout: 5000 });
       return true;
     } catch {
       return false;

@@ -1,6 +1,4 @@
 import React, { useState, useCallback } from 'react';
-import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import type { DemoState } from '@/types/demo';
 import { ImageUploadZone } from './ImageUploadZone';
 import { SAM2Canvas } from './SAM2Canvas';
@@ -9,7 +7,7 @@ import { LabelInputPanel } from './LabelInputPanel';
 import { ResultsPanel } from './ResultsPanel';
 
 interface Props {
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 export const ImageSegmentationDemo: React.FC<Props> = ({ onClose }) => {
@@ -73,6 +71,7 @@ export const ImageSegmentationDemo: React.FC<Props> = ({ onClose }) => {
       ...prev,
       segmentationResult: result,
       segmentationMask: result.mask_data,
+      clickPoints: [], // 清空标记点，允许用户重新标记
       isSegmenting: false,
       error: null,
     }));
@@ -130,16 +129,11 @@ export const ImageSegmentationDemo: React.FC<Props> = ({ onClose }) => {
   return (
     <div className="w-full h-full bg-white flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b">
-        <div>
-          <h2 className="text-2xl font-bold">AI 图像分割演示</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            上传图片，点击添加标记点，运行 SAM2 智能分割
-          </p>
-        </div>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-5 w-5" />
-        </Button>
+      <div className="p-6 border-b">
+        <h2 className="text-2xl font-bold !text-gray-900 dark:!text-gray-100">AI 图像分割演示</h2>
+        <p className="text-sm !text-gray-600 dark:!text-gray-400 mt-1">
+          上传图片，点击添加标记点，运行 SAM2 智能分割
+        </p>
       </div>
 
       {/* Main Content */}

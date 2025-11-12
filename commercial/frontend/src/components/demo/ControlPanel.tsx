@@ -21,16 +21,16 @@ export const ControlPanel: React.FC<Props> = ({
   return (
     <Card className="border-2 rounded-lg">
       <CardHeader>
-        <CardTitle className="text-sm">控制面板</CardTitle>
+        <CardTitle className="text-sm text-gray-900 dark:text-gray-100">控制面板</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="text-xs text-muted-foreground space-y-1">
+        <div className="text-xs text-gray-700 dark:text-gray-300 space-y-1">
           <p>📍 <strong>左键:</strong> 前景点 (绿色)</p>
           <p>📍 <strong>右键:</strong> 背景点 (红色)</p>
         </div>
 
         <div className="pt-3 border-t">
-          <div className="text-sm font-medium mb-2">
+          <div className="text-sm font-medium mb-2 text-gray-900 dark:text-gray-100">
             标记点: <span className="text-primary">{clickPointsCount}</span>
           </div>
 
