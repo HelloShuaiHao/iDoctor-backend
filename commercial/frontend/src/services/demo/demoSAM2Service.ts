@@ -8,8 +8,11 @@ import type { ClickPoint, SegmentationResult } from '@/types/demo';
 
 // 创建 SAM2 专用的 API 实例
 // 通过 Nginx 统一网关访问，避免 CORS 问题
+// 生产环境下使用空字符串（相对路径），开发环境使用 localhost
 const sam2API = axios.create({
-  baseURL: import.meta.env.VITE_NGINX_BASE_URL || 'http://localhost:3000',
+  baseURL: import.meta.env.VITE_NGINX_BASE_URL !== undefined
+    ? import.meta.env.VITE_NGINX_BASE_URL
+    : 'http://localhost:3000',
   timeout: 30000,
 });
 

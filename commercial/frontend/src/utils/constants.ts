@@ -6,7 +6,10 @@ export const APP_NAME = import.meta.env.VITE_APP_NAME || 'iDoctor 商业化平�
 export const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0';
 
 // API 端点（统一通过 Nginx 代理）
-export const NGINX_BASE_URL = import.meta.env.VITE_NGINX_BASE_URL || 'http://localhost:3000';
+// 生产环境下使用空字符串（相对路径），开发环境使用 localhost
+export const NGINX_BASE_URL = import.meta.env.VITE_NGINX_BASE_URL !== undefined
+  ? import.meta.env.VITE_NGINX_BASE_URL
+  : 'http://localhost:3000';
 export const IDOCTOR_APP_URL = import.meta.env.VITE_IDOCTOR_APP_URL || '/ctai';
 
 // 路由路径

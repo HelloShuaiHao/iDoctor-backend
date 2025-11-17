@@ -1,7 +1,10 @@
 import axios, { type AxiosInstance } from 'axios';
 
 // Nginx 统一网关地址
-const NGINX_BASE_URL = import.meta.env.VITE_NGINX_BASE_URL || 'http://localhost:3000';
+// 生产环境下使用空字符串（相对路径），开发环境使用 localhost
+const NGINX_BASE_URL = import.meta.env.VITE_NGINX_BASE_URL !== undefined
+  ? import.meta.env.VITE_NGINX_BASE_URL
+  : 'http://localhost:3000';
 
 // 创建认证 API 实例（通过 Nginx /api/auth/ 代理）
 export const authAPI: AxiosInstance = axios.create({
