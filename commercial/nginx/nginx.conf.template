@@ -501,6 +501,85 @@ server {
         return 301 $scheme://$http_host/ctai/;
     }
 
+    # ==================== SAM2 Video Annotation Application ====================
+
+    # SAM2 Backend API
+    location /api/sam2/ {
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
+        # 使用变量让 Nginx 动态解析
+        set $sam2_new_backend ${SAM2_NEW_BACKEND_HOST}:${SAM2_NEW_BACKEND_PORT};
+        # 去掉 /api/sam2/ 前缀，代理到根路径
+        rewrite ^/api/sam2/(.*) /$1 break;
+        proxy_pass http://$sam2_new_backend;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Origin $http_origin;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # SAM2 视频处理需要较长超时时间
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        proxy_buffering off;
+        proxy_request_buffering off;
+
+        # 隐藏后端的 CORS 头，由 Nginx 统一处理（避免重复）
+        proxy_hide_header 'Access-Control-Allow-Origin';
+        proxy_hide_header 'Access-Control-Allow-Credentials';
+        proxy_hide_header 'Access-Control-Allow-Methods';
+        proxy_hide_header 'Access-Control-Allow-Headers';
+
+        # 添加 CORS 响应头（正常请求）
+        add_header 'Access-Control-Allow-Origin' $http_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+    }
+
+    # SAM2 Frontend - Serve static files
+    location /sam2/ {
+        # 使用变量让 Nginx 动态解析
+        set $sam2_frontend_backend ${SAM2_NEW_FRONTEND_HOST}:${SAM2_NEW_FRONTEND_PORT};
+        # 去掉 /sam2/ 前缀，代理到根路径
+        rewrite ^/sam2/(.*) /$1 break;
+        proxy_pass http://$sam2_frontend_backend;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_buffering off;
+    }
+
+    # SAM2 Frontend 根路径重定向
+    location = /sam2 {
+        # 使用 $http_host 保留客户端请求的端口
+        return 301 $scheme://$http_host/sam2/;
+    }
+
     # ==================== 健康检查 ====================
     location /health {
         access_log off;
