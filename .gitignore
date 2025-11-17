@@ -73,3 +73,7 @@ models/
 *.ckpt
 sam2_models/
 checkpoints/
+
+
+# data
+collection_results/

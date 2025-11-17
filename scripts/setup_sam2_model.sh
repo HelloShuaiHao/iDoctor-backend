@@ -105,15 +105,20 @@ step3_download_model() {
         local file_size=$(du -h "$model_path" | cut -f1)
         print_warning "模型文件已存在: $model_path (大小: $file_size)"
 
-        read -p "是否重新下载? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_info "跳过下载，使用现有模型"
+        if [ "$PRODUCTION" = true ]; then
+            print_info "生产环境：跳过下载，使用现有模型"
             return 0
-        fi
+        else
+            read -p "是否重新下载? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_info "跳过下载，使用现有模型"
+                return 0
+            fi
 
-        print_info "删除旧模型..."
-        rm -f "$model_path"
+            print_info "删除旧模型..."
+            rm -f "$model_path"
+        fi
     fi
 
     print_info "开始下载 SAM2.1 Hiera Large 模型..."
@@ -153,11 +158,16 @@ step4_copy_to_docker_volume() {
         print_warning "Docker volume 中已存在模型文件"
         echo "$existing_model"
 
-        read -p "是否覆盖? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_info "跳过复制，使用现有模型"
+        if [ "$PRODUCTION" = true ]; then
+            print_info "生产环境：跳过复制，使用现有模型"
             return 0
+        else
+            read -p "是否覆盖? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_info "跳过复制，使用现有模型"
+                return 0
+            fi
         fi
     fi
 
@@ -180,15 +190,21 @@ step5_restart_sam2_service() {
     print_header "步骤 5: 重启 SAM2 服务"
 
     if [ "$PRODUCTION" = true ]; then
-        print_info "生产环境：重启 SAM2 Docker 服务..."
+        # 检查容器是否存在
+        if docker ps -a --format '{{.Names}}' | grep -q "idoctor_sam2_service\|sam2_service"; then
+            print_info "生产环境：重启 SAM2 Docker 服务..."
 
-        cd "$DOCKER_COMPOSE_DIR"
-        docker-compose restart sam2_service
+            cd "$DOCKER_COMPOSE_DIR"
+            docker-compose restart sam2_service
 
-        print_info "等待服务启动..."
-        sleep 5
+            print_info "等待服务启动..."
+            sleep 5
 
-        print_success "SAM2 服务已重启"
+            print_success "SAM2 服务已重启"
+        else
+            print_warning "SAM2 容器尚未创建，跳过重启步骤"
+            print_info "容器将在后续的 docker-compose up 步骤中自动加载模型"
+        fi
     else
         print_warning "本地环境：请手动重启 SAM2 服务"
         echo -e "${BLUE}方法 1 - 使用 docker-compose:${NC}"
@@ -202,6 +218,14 @@ step5_restart_sam2_service() {
 
 step6_verify_model_loaded() {
     print_header "步骤 6: 验证模型加载"
+
+    # 检查容器是否正在运行
+    if ! docker ps --format '{{.Names}}' | grep -q "idoctor_sam2_service\|sam2_service"; then
+        print_warning "SAM2 容器尚未运行，跳过验证步骤"
+        print_info "容器启动后，可运行以下命令验证:"
+        echo "  curl http://localhost:8000/health"
+        return 0
+    fi
 
     print_info "等待 SAM2 服务完全启动..."
     sleep 10
@@ -226,15 +250,21 @@ step6_verify_model_loaded() {
 step7_cleanup() {
     print_header "步骤 7: 清理（可选）"
 
-    read -p "是否删除本地模型文件以节省空间? (y/N): " -n 1 -r
-    echo
-
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -rf "$LOCAL_MODEL_DIR"
-        print_success "已删除本地模型目录: $LOCAL_MODEL_DIR"
-        print_info "模型仍保留在 Docker volume 中"
+    if [ "$PRODUCTION" = true ]; then
+        # 生产环境自动保留本地模型文件以便后续使用
+        print_info "生产环境：保留本地模型文件"
+        print_info "如需删除，请手动运行: rm -rf $LOCAL_MODEL_DIR"
     else
-        print_info "保留本地模型文件"
+        read -p "是否删除本地模型文件以节省空间? (y/N): " -n 1 -r
+        echo
+
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            rm -rf "$LOCAL_MODEL_DIR"
+            print_success "已删除本地模型目录: $LOCAL_MODEL_DIR"
+            print_info "模型仍保留在 Docker volume 中"
+        else
+            print_info "保留本地模型文件"
+        fi
     fi
 }
 
