@@ -192,10 +192,21 @@ def perform_sam2_segmentation(
             multimask_output=True
         )
 
+        # Debug: log all candidate masks
+        h, w = image_array.shape[:2]
+        total_pixels = h * w
+        logger.info(f"SAM2 returned {len(masks)} candidate masks:")
+        for i, (mask, score) in enumerate(zip(masks, scores)):
+            area_pct = (np.sum(mask) / total_pixels) * 100
+            logger.info(f"  Mask {i}: score={score:.3f}, area={area_pct:.1f}%")
+
         # Select mask with highest score
         best_idx = np.argmax(scores)
         mask = masks[best_idx]
         confidence = float(scores[best_idx])
+
+        area_pct = (np.sum(mask) / total_pixels) * 100
+        logger.info(f"Selected mask {best_idx}: score={confidence:.3f}, area={area_pct:.1f}%")
 
         # Convert boolean mask to uint8
         mask_uint8 = (mask * 255).astype(np.uint8)

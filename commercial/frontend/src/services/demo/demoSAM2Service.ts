@@ -25,16 +25,15 @@ export class DemoSAM2Service {
     clickPoints: ClickPoint[]
   ): Promise<SegmentationResult> {
     // Create FormData payload
-    // 参数名需要匹配后端定义（app.py:904-911）
+    // 参数名需要匹配 SAM2 服务定义（sam2_service.py:246-252）
     const formData = new FormData();
-    formData.append('file', imageFile); // 后端期望 'file'
-    formData.append('image_type', 'auto'); // 后端期望 'image_type'
-    formData.append('patient_id', 'demo-user'); // 后端期望 'patient_id'
-    formData.append('slice_index', '0'); // 后端期望 'slice_index'
-    formData.append('click_points', JSON.stringify(clickPoints)); // 后端期望 'click_points'
+    formData.append('file', imageFile); // 必需
+    formData.append('image_type', 'auto'); // 可选，默认 'auto'
+    formData.append('return_format', 'base64'); // 可选，默认 'base64'
+    formData.append('click_points', JSON.stringify(clickPoints)); // 可选
 
     try {
-      const response = await sam2API.post('/api/ctai/api/segmentation/sam2', formData, {
+      const response = await sam2API.post('/api/segmentation/segment', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -76,8 +75,8 @@ export class DemoSAM2Service {
    */
   async checkServiceHealth(): Promise<boolean> {
     try {
-      // Check SAM2 health via main backend
-      await sam2API.get('/api/ctai/api/segmentation/sam2/health', { timeout: 5000 });
+      // Check SAM2 health via Nginx proxy
+      await sam2API.get('/api/segmentation/health', { timeout: 5000 });
       return true;
     } catch {
       return false;

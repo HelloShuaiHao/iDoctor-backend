@@ -249,22 +249,16 @@ export async function sam2Segment({ imageFile, imageType = 'auto', patientId = n
     const formData = new FormData()
     formData.append('file', imageFile)
     formData.append('image_type', imageType)
-
-    if (patientId) {
-      formData.append('patient_id', patientId)
-    }
-
-    if (sliceIndex) {
-      formData.append('slice_index', sliceIndex)
-    }
+    formData.append('return_format', 'base64') // 确保返回 base64 格式
 
     // 添加点击坐标
     if (clickPoints && clickPoints.length > 0) {
       formData.append('click_points', JSON.stringify(clickPoints))
     }
 
+    // SAM2 API 直接通过 Nginx 代理，不使用 BASE_URL
     const response = await axios.post(
-      `${BASE_URL}/api/segmentation/sam2`,
+      '/api/segmentation/segment', // 使用绝对路径，直接通过 Nginx 代理
       formData,
       {
         headers: {
@@ -307,10 +301,15 @@ export async function sam2Segment({ imageFile, imageType = 'auto', patientId = n
  */
 export async function checkSam2Health() {
   try {
-    const response = await axios.get(`${BASE_URL}/api/segmentation/sam2/health`, {
+    // SAM2 健康检查直接通过 Nginx 代理，不使用 BASE_URL
+    const response = await axios.get('/api/segmentation/health', {
       timeout: 5000
     })
-    return response.data
+    return {
+      enabled: true,
+      available: response.data.status === 'healthy',
+      model_loaded: response.data.model_loaded
+    }
   } catch (error) {
     console.error('SAM2 health check failed:', error)
     return {

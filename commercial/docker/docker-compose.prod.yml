@@ -17,6 +17,14 @@ services:
       # 生产环境中，主应用可能在宿主机或另一个网络
       IDOCTOR_API_HOST: ${IDOCTOR_API_HOST:-host.docker.internal}
       IDOCTOR_API_PORT: ${IDOCTOR_API_PORT:-4200}
+      # SAM2 服务配置
+      SAM2_SERVICE_HOST: ${SAM2_SERVICE_HOST:-sam2_service}
+      SAM2_SERVICE_PORT: ${SAM2_SERVICE_PORT:-8000}
+      # SAM2 新服务配置（视频标注）
+      SAM2_NEW_BACKEND_HOST: ${SAM2_NEW_BACKEND_HOST:-host.docker.internal}
+      SAM2_NEW_BACKEND_PORT: ${SAM2_NEW_BACKEND_PORT:-8001}
+      SAM2_NEW_FRONTEND_HOST: ${SAM2_NEW_FRONTEND_HOST:-host.docker.internal}
+      SAM2_NEW_FRONTEND_PORT: ${SAM2_NEW_FRONTEND_PORT:-8002}
     ports:
       # 根据生产端口映射（如 55305:3000）
       - "${NGINX_EXTERNAL_PORT:-55305}:${NGINX_PORT:-3000}"
@@ -35,3 +43,19 @@ services:
   payment_service:
     environment:
       ENVIRONMENT: production
+
+  # 生产环境 SAM2 服务 - 启用 GPU 支持
+  sam2_service:
+    environment:
+      SAM2_DEVICE: cuda  # 使用 GPU
+      SAM2_BATCH_SIZE: ${SAM2_BATCH_SIZE:-4}  # GPU 可以处理更大批量
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
