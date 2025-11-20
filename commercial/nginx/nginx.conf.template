@@ -631,6 +631,17 @@ server {
         proxy_set_header Connection "upgrade";
 
         proxy_buffering off;
+
+        # SPA fallback - 处理前端路由
+        proxy_intercept_errors on;
+        error_page 404 = @sam2_fallback;
+    }
+
+    location @sam2_fallback {
+        set $sam2_frontend_backend ${SAM2_NEW_FRONTEND_HOST}:${SAM2_NEW_FRONTEND_PORT};
+        rewrite ^/sam2/(.*) / break;
+        proxy_pass http://$sam2_frontend_backend;
+        proxy_set_header Host $host;
     }
 
     # SAM2 Frontend 根路径重定向
