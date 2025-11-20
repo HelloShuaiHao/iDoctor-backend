@@ -521,8 +521,8 @@ server {
 
         # 使用变量让 Nginx 动态解析
         set $training_backend ${TRAINING_API_HOST}:${TRAINING_API_PORT};
-        # 去掉 /api/training/ 前缀，代理到根路径
-        rewrite ^/api/training/(.*) /$1 break;
+        # 去掉 /training/ 部分，保留 /api/
+        rewrite ^/api/training/(.*) /api/$1 break;
         proxy_pass http://$training_backend;
         proxy_http_version 1.1;
 
