@@ -10,6 +10,8 @@
 #   PAYMENT_SERVICE_PORT - 支付服务端口（默认: 9002）
 #   IDOCTOR_API_HOST   - 主应用地址（默认: localhost）
 #   IDOCTOR_API_PORT   - 主应用端口（默认: 4200）
+#   TRAINING_API_HOST  - Training API服务地址（默认: localhost）
+#   TRAINING_API_PORT  - Training API服务端口（默认: 7264）
 #   STATIC_ROOT        - 静态文件根目录（默认: /usr/share/nginx/html）
 
 # Docker DNS 解析器（允许动态解析服务名）
@@ -499,6 +501,59 @@ server {
     location = /ctai {
         # 使用 $http_host 保留客户端请求的端口
         return 301 $scheme://$http_host/ctai/;
+    }
+
+    # ==================== SAM2 Training API ====================
+
+    # SAM2 Training API - 训练任务管理
+    location /api/training/ {
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $http_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
+        # 使用变量让 Nginx 动态解析
+        set $training_backend ${TRAINING_API_HOST}:${TRAINING_API_PORT};
+        # 去掉 /api/training/ 前缀，代理到根路径
+        rewrite ^/api/training/(.*) /$1 break;
+        proxy_pass http://$training_backend;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Origin $http_origin;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # 训练任务需要非常长的超时时间
+        proxy_connect_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+
+        proxy_buffering off;
+        proxy_request_buffering off;
+
+        # 隐藏后端的 CORS 头，由 Nginx 统一处理（避免重复）
+        proxy_hide_header 'Access-Control-Allow-Origin';
+        proxy_hide_header 'Access-Control-Allow-Credentials';
+        proxy_hide_header 'Access-Control-Allow-Methods';
+        proxy_hide_header 'Access-Control-Allow-Headers';
+
+        # 添加 CORS 响应头（正常请求）
+        add_header 'Access-Control-Allow-Origin' $http_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
     }
 
     # ==================== SAM2 Video Annotation Application ====================
