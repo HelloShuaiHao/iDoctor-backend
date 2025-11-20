@@ -519,6 +519,11 @@ server {
             return 204;
         }
 
+        # 文件上传优化
+        client_max_body_size 500M;
+        client_body_buffer_size 256k;
+        client_body_timeout 300s;
+
         # 使用变量让 Nginx 动态解析
         set $training_backend ${TRAINING_API_HOST}:${TRAINING_API_PORT};
         # 去掉 /training/ 部分，保留 /api/
@@ -530,18 +535,17 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Origin $http_origin;
-
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
 
         # 训练任务需要非常长的超时时间
-        proxy_connect_timeout 600s;
-        proxy_send_timeout 600s;
-        proxy_read_timeout 600s;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
 
+        # 文件上传性能优化 - 关键设置
         proxy_buffering off;
         proxy_request_buffering off;
+        tcp_nodelay on;
+        tcp_nopush on;
 
         # 隐藏后端的 CORS 头，由 Nginx 统一处理（避免重复）
         proxy_hide_header 'Access-Control-Allow-Origin';
