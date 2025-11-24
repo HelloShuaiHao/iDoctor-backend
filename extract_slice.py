@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 import os
-
+import cv2
 # === Step 1: Load DICOM Series into Volume ===
 def load_dicom_series(folder_path):
     dicom_files = [
@@ -76,20 +76,6 @@ def dicom_to_png(ds, output_path, default_center=None, default_width=None):
     intercept = float(ds.get("RescaleIntercept", 0))
     hu = pixel_array * slope + intercept
 
-    # Step 2: Get or define window center/width
-    # wc_raw = ds.get("WindowCenter", np.mean(hu))
-    # ww_raw = ds.get("WindowWidth", np.max(hu) - np.min(hu))
-
-    # center = default_center or float(wc_raw[0] if isinstance(wc_raw, pydicom.multival.MultiValue) else wc_raw)
-    # width = default_width or float(ww_raw[0] if isinstance(ww_raw, pydicom.multival.MultiValue) else ww_raw)
-
-    # Step 3: Clip values to window range
-    # min_val = center - width / 2
-    # max_val = center + width / 2
-    """
-    2025/10/04
-    使用 HU 值的 0 到 100 范围进行线性归一
-    """
     min_val = -100
     max_val = 200
     hu_clipped = np.clip(hu, min_val, max_val)
@@ -103,78 +89,78 @@ def dicom_to_png(ds, output_path, default_center=None, default_width=None):
     print("imageShape:", hu_uint8.shape)
     print(f"Saved PNG: {output_path}")
 
-
-def convert_selected_slices(dicom_folder, output_folder, selected_slices):
-    os.makedirs(output_folder, exist_ok=True)
-
-    for filename in sorted(os.listdir(dicom_folder)):
-        if filename.startswith("._"):
-            continue
-
-        if not filename.lower().endswith((".dcm", ".dcm.pk")):
-            continue
-
-        dicom_path = os.path.join(dicom_folder, filename)
-        try:
-            ds = pydicom.dcmread(dicom_path)
-            instance_number = int(ds.get("InstanceNumber", -1))
-
-            if instance_number in selected_slices:
-                output_filename = f"slice_{instance_number:03d}_0000.png"
-                output_path = os.path.join(output_folder, output_filename)
-                dicom_to_png(ds, output_path)
-
-        except Exception as e:
-            print(f"Error processing {filename}: {e}")
-
-
-def convert_selected_slices_by_z_index(dicom_folder, output_folder, selected_z_indices,
+def convert_selected_slices_by_z_index(dicom_folder, output_folder, mask_folder, overlay_folder, selected_z_indices,
                                        default_center=None, default_width=None):
-    """
-    根据构建 volume 时的物理顺序 (ImagePositionPatient[2] -> 排序) 用 z 索引导出对应切片。
-    selected_z_indices: 直接来自 extract_axial_slices_from_sagittal_mask 返回的 z list
-    """
     os.makedirs(output_folder, exist_ok=True)
-    # 读取并收集
+    os.makedirs(mask_folder, exist_ok=True)
+    os.makedirs(overlay_folder, exist_ok=True)
+
+    # ✅ Step1: 读取所有 DICOM
     ds_list = []
     for f in os.listdir(dicom_folder):
         if f.startswith("._"):
             continue
         if not f.lower().endswith((".dcm", ".dcm.pk")):
             continue
-        path = os.path.join(dicom_folder, f)
         try:
-            ds = pydicom.dcmread(path)
+            ds = pydicom.dcmread(os.path.join(dicom_folder, f))
             ds_list.append(ds)
-        except Exception as e:
-            print(f"[跳过] 读取失败 {f}: {e}")
+        except:
+            continue
+    
     if not ds_list:
         print("[警告] 没有可用 DICOM")
         return
 
-    # 排序（与 SimpleITK 读取顺序对齐）
-    def z_key(ds):
-        try:
-            return float(ds.ImagePositionPatient[2])
-        except Exception:
-            return float(ds.get("InstanceNumber", 0))
-    ds_list.sort(key=z_key)
+    # ✅ 排序
+    ds_list.sort(key=lambda ds: float(ds.ImagePositionPatient[2])
+                 if hasattr(ds, "ImagePositionPatient")
+                 else float(ds.get("InstanceNumber", 0)))
 
     sel_set = set(selected_z_indices)
-    print(f"[INFO] 选中 z 索引数量: {len(sel_set)}  原始列表长度: {len(selected_z_indices)}")
+    print(f"[INFO] 选中 z 索引数量: {len(sel_set)}")
 
+    # ✅ Step2: 遍历选中层
     for z_idx, ds in enumerate(ds_list):
-        if z_idx in sel_set:
-            inst = ds.get("InstanceNumber", z_idx)
-            try:
-                inst_int = int(inst)
-            except:
-                inst_int = z_idx
-            out_name = f"slice_{inst_int:03d}_0000.png"
-            out_path = os.path.join(output_folder, out_name)
-            dicom_to_png(ds, out_path, default_center=default_center, default_width=default_width)
-            # 调试输出
-            ipp = getattr(ds, "ImagePositionPatient", ["?", "?", "?"])
-            print(f"[导出] z_idx={z_idx} -> {out_name}  InstanceNumber={inst}  Z={ipp[2] if len(ipp)>=3 else '?'}")            
+
+        if z_idx not in sel_set:
+            continue
+
+        inst = ds.get("InstanceNumber", z_idx)
+        try:
+            inst_int = int(inst)
+        except:
+            inst_int = z_idx
+
+        base = f"slice_{inst_int:03d}_0000"
+        base_clean = base.replace("_0000", "")
+        out_png = os.path.join(output_folder, base + ".png")
+        dicom_to_png(ds, out_png, default_center, default_width)
+
+        hu_img = ds.pixel_array.astype(np.float32)
+        if "RescaleSlope" in ds and "RescaleIntercept" in ds:
+            hu_img = hu_img * float(ds.RescaleSlope) + float(ds.RescaleIntercept)
+
+        # SM_mask  = np.logical_and(hu_img >= 30, hu_img <= 34).astype(np.uint8)
+        # VAT_mask = np.logical_and(hu_img >= -150, hu_img <= -50).astype(np.uint8)
+        SAT_mask = np.logical_and(hu_img >= -190, hu_img <= -30).astype(np.uint8)
+        
+        # 加上骨头的HU范围
+        # Bone_mask = np.logical_and(hu_img >= 150).astype(np.uint8)
+
+        # 执行开运算（去除小白噪声）
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+        SAT_mask_clean = cv2.morphologyEx(SAT_mask.astype(np.uint8), cv2.MORPH_OPEN, kernel)
 
 
+        img = cv2.imread(out_png, 0)
+        img_color = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+        img_color[SAT_mask_clean == 1] = (0, 255, 255)    # 蓝
+
+        cv2.imwrite(os.path.join(mask_folder, f"{base_clean}.png"), SAT_mask_clean * 255)
+        cv2.imwrite(os.path.join(overlay_folder, f"{base_clean}_overlay.png"), img_color)
+
+        print(f"[提取+分析] z={z_idx} -> {base}")
+
+    print("✅ 选中层提取和 HU 分类全部完成！")
