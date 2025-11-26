@@ -49,6 +49,8 @@ services:
     environment:
       SAM2_DEVICE: cuda  # 使用 GPU
       SAM2_BATCH_SIZE: ${SAM2_BATCH_SIZE:-4}  # GPU 可以处理更大批量
+      # CRITICAL: Configure PyTorch CUDA memory allocator to avoid fragmentation
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
     deploy:
       resources:
         limits:

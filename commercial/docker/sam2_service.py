@@ -167,55 +167,81 @@ def perform_sam2_segmentation(
         return mask, 0.5  # Mock confidence
 
     try:
-        # Set image for SAM2
-        sam2_predictor.set_image(image_array)
+        import torch
 
-        # Prepare point prompts
-        h, w = image_array.shape[:2]
+        # Use no_grad context to prevent gradient computation and save memory
+        with torch.no_grad():
+            # Set image for SAM2
+            sam2_predictor.set_image(image_array)
 
-        if click_points and len(click_points) > 0:
-            # Use user-provided click points
-            point_coords = np.array([[p["x"], p["y"]] for p in click_points])
-            point_labels = np.array([p["label"] for p in click_points])
-            logger.info(f"Using {len(click_points)} user-provided click points")
-        else:
-            # Smart automatic detection: find muscle centroid
-            cx, cy = detect_muscle_centroid(image_array)
-            point_coords = np.array([[cx, cy]])
-            point_labels = np.array([1])  # Foreground point
-            logger.info(f"Using smart muscle detection at ({cx}, {cy})")
+            # Prepare point prompts
+            h, w = image_array.shape[:2]
 
-        # Predict mask
-        masks, scores, _ = sam2_predictor.predict(
-            point_coords=point_coords,
-            point_labels=point_labels,
-            multimask_output=True
-        )
+            if click_points and len(click_points) > 0:
+                # Use user-provided click points
+                point_coords = np.array([[p["x"], p["y"]] for p in click_points])
+                point_labels = np.array([p["label"] for p in click_points])
+                logger.info(f"Using {len(click_points)} user-provided click points")
+            else:
+                # Smart automatic detection: find muscle centroid
+                cx, cy = detect_muscle_centroid(image_array)
+                point_coords = np.array([[cx, cy]])
+                point_labels = np.array([1])  # Foreground point
+                logger.info(f"Using smart muscle detection at ({cx}, {cy})")
 
-        # Debug: log all candidate masks
-        h, w = image_array.shape[:2]
-        total_pixels = h * w
-        logger.info(f"SAM2 returned {len(masks)} candidate masks:")
-        for i, (mask, score) in enumerate(zip(masks, scores)):
+            # Predict mask
+            masks, scores, _ = sam2_predictor.predict(
+                point_coords=point_coords,
+                point_labels=point_labels,
+                multimask_output=True
+            )
+
+            # Debug: log all candidate masks
+            h, w = image_array.shape[:2]
+            total_pixels = h * w
+            logger.info(f"SAM2 returned {len(masks)} candidate masks:")
+            for i, (mask, score) in enumerate(zip(masks, scores)):
+                area_pct = (np.sum(mask) / total_pixels) * 100
+                logger.info(f"  Mask {i}: score={score:.3f}, area={area_pct:.1f}%")
+
+            # Select mask with highest score
+            best_idx = np.argmax(scores)
+            mask = masks[best_idx]
+            confidence = float(scores[best_idx])
+
             area_pct = (np.sum(mask) / total_pixels) * 100
-            logger.info(f"  Mask {i}: score={score:.3f}, area={area_pct:.1f}%")
+            logger.info(f"Selected mask {best_idx}: score={confidence:.3f}, area={area_pct:.1f}%")
 
-        # Select mask with highest score
-        best_idx = np.argmax(scores)
-        mask = masks[best_idx]
-        confidence = float(scores[best_idx])
+            # Convert boolean mask to uint8
+            mask_uint8 = (mask * 255).astype(np.uint8)
 
-        area_pct = (np.sum(mask) / total_pixels) * 100
-        logger.info(f"Selected mask {best_idx}: score={confidence:.3f}, area={area_pct:.1f}%")
+            logger.info(f"SAM2 segmentation completed with confidence: {confidence:.3f}")
 
-        # Convert boolean mask to uint8
-        mask_uint8 = (mask * 255).astype(np.uint8)
+        # CRITICAL: Reset predictor state to free GPU memory
+        # This clears the cached image features and embeddings
+        sam2_predictor.reset_state()
 
-        logger.info(f"SAM2 segmentation completed with confidence: {confidence:.3f}")
+        # CRITICAL: Clear CUDA cache to free fragmented memory
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            # Log memory usage for debugging
+            allocated = torch.cuda.memory_allocated() / 1024**2  # MB
+            reserved = torch.cuda.memory_reserved() / 1024**2  # MB
+            logger.debug(f"GPU Memory after cleanup: allocated={allocated:.1f}MB, reserved={reserved:.1f}MB")
+
         return mask_uint8, confidence
 
     except Exception as e:
         logger.error(f"SAM2 segmentation failed: {e}")
+        # Ensure cleanup even on failure
+        try:
+            import torch
+            if sam2_predictor is not None:
+                sam2_predictor.reset_state()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except:
+            pass
         # Fallback to mock
         mask = mock_segmentation(image_array)
         return mask, 0.3
@@ -242,17 +268,50 @@ def calculate_bounding_box(mask: np.ndarray) -> Optional[dict]:
 @app.on_event("startup")
 async def startup_event():
     """Load model on startup"""
+    # Configure PyTorch memory management to reduce fragmentation
+    import os
+    # Enable expandable segments to avoid fragmentation (as suggested by error message)
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+    # Load the model
     load_sam2_model()
+
+    # Log initial GPU memory state
+    try:
+        import torch
+        if torch.cuda.is_available():
+            logger.info(f"CUDA available: {torch.cuda.get_device_name(0)}")
+            logger.info(f"Total GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+    except:
+        pass
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {
+    health_info = {
         "status": "healthy",
         "model_loaded": model_loaded,
         "service": "sam2_segmentation",
         "version": "1.0.0"
     }
+
+    # Add GPU memory info if available
+    try:
+        import torch
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+            reserved = torch.cuda.memory_reserved() / 1024**3  # GB
+            total = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
+            health_info["gpu_memory"] = {
+                "allocated_gb": round(allocated, 2),
+                "reserved_gb": round(reserved, 2),
+                "total_gb": round(total, 2),
+                "free_gb": round(total - allocated, 2)
+            }
+    except:
+        pass
+
+    return health_info
 
 @app.post("/segment", response_model=SegmentationResponse)
 async def segment_image(
@@ -350,9 +409,56 @@ async def root():
         "model_loaded": model_loaded,
         "endpoints": {
             "health": "/health",
-            "segment": "/segment (POST)"
+            "segment": "/segment (POST)",
+            "cleanup": "/cleanup (POST)"
         }
     }
+
+@app.post("/cleanup")
+async def manual_cleanup():
+    """Manually trigger GPU memory cleanup"""
+    try:
+        import torch
+        import gc
+
+        # Reset predictor state if available
+        if sam2_predictor is not None:
+            sam2_predictor.reset_state()
+            logger.info("SAM2 predictor state reset")
+
+        # Run Python garbage collection
+        gc.collect()
+
+        # Clear CUDA cache
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()  # Wait for all operations to complete
+
+            # Get memory stats after cleanup
+            allocated = torch.cuda.memory_allocated() / 1024**2  # MB
+            reserved = torch.cuda.memory_reserved() / 1024**2  # MB
+            logger.info(f"Manual cleanup completed: allocated={allocated:.1f}MB, reserved={reserved:.1f}MB")
+
+            return {
+                "status": "success",
+                "message": "GPU memory cleanup completed",
+                "memory_mb": {
+                    "allocated": round(allocated, 2),
+                    "reserved": round(reserved, 2)
+                }
+            }
+        else:
+            return {
+                "status": "success",
+                "message": "Cleanup completed (CPU mode, no GPU cleanup needed)"
+            }
+
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}")
+        return {
+            "status": "error",
+            "message": f"Cleanup failed: {str(e)}"
+        }
 
 if __name__ == "__main__":
     import uvicorn
