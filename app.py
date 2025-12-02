@@ -6,11 +6,16 @@ import logging
 
 # 配置日志
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,  # 从 DEBUG 改为 INFO，避免过多日志影响性能
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     force=True
 )
 logger = logging.getLogger(__name__)
+
+# 抑制第三方库的 DEBUG 日志（特别是 python-multipart）
+logging.getLogger("multipart").setLevel(logging.WARNING)
+logging.getLogger("python_multipart").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 # Force immediate flush
 import sys

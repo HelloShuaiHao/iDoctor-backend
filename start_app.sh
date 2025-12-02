@@ -3,6 +3,9 @@
 
 cd "$(dirname "$0")"
 
+# 设置环境变量
+export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1
+
 # 停止旧进程
 pkill -f "uvicorn app:app"
 
