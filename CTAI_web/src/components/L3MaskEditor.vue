@@ -36,7 +36,7 @@
         左键点击肌肉区域(前景点)，右键点击背景区域，然后点击"执行分割"
       </template>
       <template v-else>
-        {{ $t('editor.tips') }}
+        左键点击添加顶点，右键或双击完成多边形绘制
       </template>
     </div>
 
@@ -72,10 +72,10 @@
         >
           清除点击
         </el-button>
-        <el-button v-if="!sam2ClickMode" size="mini" :disabled="!rects.length" @click="undo">
+        <el-button v-if="!sam2ClickMode" size="mini" :disabled="!polygons.length" @click="undo">
           {{ $t('actions.undo') }}
         </el-button>
-        <el-button v-if="!sam2ClickMode" size="mini" :disabled="!rects.length" @click="clearRects">
+        <el-button v-if="!sam2ClickMode" size="mini" :disabled="!polygons.length" @click="clearPolygons">
           {{ $t('actions.clear') }}
         </el-button>
       </div>
@@ -86,7 +86,7 @@
         <el-button
           type="primary"
           size="mini"
-          :disabled="!rects.length || uploading || !imageUrl"
+          :disabled="!polygons.length || uploading || !imageUrl"
           :loading="uploading"
           @click="saveAndUpload"
         >
@@ -118,10 +118,10 @@ export default {
       naturalWidth: 0,
       naturalHeight: 0,
       scale: 1,
-      rects: [], // 坐标存原始图尺寸
+      polygons: [], // 存储已完成的多边形 [{points: [{x, y}, ...]}]
+      currentPolygon: [], // 当前正在绘制的多边形顶点
+      previewPoint: null, // 鼠标移动时的预览点
       drawing: false,
-      startPoint: null,
-      currentRect: null,
       // SAM2交互模式
       sam2ClickMode: false, // 是否处于SAM2点击模式
       clickPoints: [], // 用户点击的点 [{x, y, label}]
@@ -146,8 +146,8 @@ export default {
   },
   methods: {
     init() {
-      this.rects = [];
-      this.currentRect = null;
+      this.polygons = [];
+      this.currentPolygon = [];
       this.fetchSagittal(0);
     },
     async fetchSagittal(force = 0) {
@@ -181,6 +181,16 @@ export default {
       this.naturalHeight = img.naturalHeight;
       this.computeScale();
       this.resizeCanvas();
+
+      // 禁用右键菜单以便右键可以完成多边形
+      const canvas = this.$refs.canvas;
+      if (canvas) {
+        canvas.oncontextmenu = (e) => {
+          e.preventDefault();
+          return false;
+        };
+      }
+
       this.redraw();
     },
     computeScale() {
@@ -218,42 +228,40 @@ export default {
         return;
       }
 
-      // 矩形绘制模式
+      // 多边形绘制模式
+      e.preventDefault();
       const { x, y } = this.canvasToImageCoords(e);
-      this.drawing = true;
-      this.startPoint = { x, y };
-      this.currentRect = null;
+
+      // 右键或双击: 完成当前多边形
+      if (e.button === 2 || e.detail === 2) {
+        if (this.currentPolygon.length >= 3) {
+          this.polygons.push({ points: [...this.currentPolygon] });
+          this.currentPolygon = [];
+          this.drawing = false;
+          this.redraw();
+        }
+        return;
+      }
+
+      // 左键单击: 添加顶点
+      if (e.button === 0) {
+        this.currentPolygon.push({ x, y });
+        this.drawing = true;
+        this.redraw();
+      }
     },
     onMove(e) {
       if (this.sam2ClickMode) return; // SAM2模式不需要move
-      if (!this.drawing) return;
+      if (this.currentPolygon.length === 0) return;
+
+      // 存储鼠标当前位置用于预览
       const { x, y } = this.canvasToImageCoords(e);
-      this.currentRect = {
-        x1: this.startPoint.x,
-        y1: this.startPoint.y,
-        x2: x,
-        y2: y,
-      };
+      this.previewPoint = { x, y };
       this.redraw();
     },
     onUp() {
-      if (this.sam2ClickMode) return; // SAM2模式不需要up
-      if (!this.drawing) return;
-      this.drawing = false;
-      if (this.currentRect) {
-        const r = this.normalize(this.currentRect);
-        if (r.x2 - r.x1 > 3 && r.y2 - r.y1 > 3) this.rects.push(r);
-      }
-      this.currentRect = null;
-      this.redraw();
-    },
-    normalize(r) {
-      return {
-        x1: Math.min(r.x1, r.x2),
-        y1: Math.min(r.y1, r.y2),
-        x2: Math.max(r.x1, r.x2),
-        y2: Math.max(r.y1, r.y2),
-      };
+      // SAM2模式和多边形模式都在 onDown 中处理完成
+      // 这里不需要额外操作
     },
     redraw() {
       const cv = this.$refs.canvas;
@@ -267,9 +275,10 @@ export default {
       ctx.scale(this.scale, this.scale);
 
       console.log('Redrawing:', {
-        mode: this.sam2ClickMode ? 'SAM2' : 'Rectangle',
+        mode: this.sam2ClickMode ? 'SAM2' : 'Polygon',
         clickPointsCount: this.clickPoints.length,
-        rectsCount: this.rects.length,
+        polygonsCount: this.polygons.length,
+        currentPolygonCount: this.currentPolygon.length,
         scale: this.scale
       });
 
@@ -296,42 +305,87 @@ export default {
           ctx.fill();
         }
       } else {
-        // 矩形模式: 绘制矩形
-        // 已完成矩形
-        for (const r of this.rects) {
+        // 多边形模式: 绘制已完成的多边形
+        for (const polygon of this.polygons) {
+          if (polygon.points.length < 2) continue;
+
+          // 绘制填充
+          ctx.beginPath();
+          ctx.moveTo(polygon.points[0].x, polygon.points[0].y);
+          for (let i = 1; i < polygon.points.length; i++) {
+            ctx.lineTo(polygon.points[i].x, polygon.points[i].y);
+          }
+          ctx.closePath();
+          ctx.fillStyle = "rgba(0,200,0,0.18)";
+          ctx.fill();
+
+          // 绘制边框
           ctx.strokeStyle = "rgba(0,200,0,0.95)";
           ctx.lineWidth = 2;
           ctx.setLineDash([]);
-          ctx.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
-          ctx.fillStyle = "rgba(0,200,0,0.18)";
-          ctx.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+          ctx.stroke();
+
+          // 绘制顶点
+          for (const pt of polygon.points) {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = "rgba(0,200,0,1)";
+            ctx.fill();
+          }
         }
-        // 正在绘制
-        if (this.currentRect) {
-          const r = this.normalize(this.currentRect);
+
+        // 绘制正在绘制的多边形
+        if (this.currentPolygon.length > 0) {
+          // 绘制已有的线段
           ctx.strokeStyle = "rgba(255,180,0,0.95)";
           ctx.lineWidth = 2;
           ctx.setLineDash([6, 4]);
-          ctx.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+          ctx.beginPath();
+          ctx.moveTo(this.currentPolygon[0].x, this.currentPolygon[0].y);
+          for (let i = 1; i < this.currentPolygon.length; i++) {
+            ctx.lineTo(this.currentPolygon[i].x, this.currentPolygon[i].y);
+          }
+
+          // 绘制预览线(从最后一个点到鼠标位置)
+          if (this.previewPoint) {
+            ctx.lineTo(this.previewPoint.x, this.previewPoint.y);
+            // 如果有多于2个点,绘制回到起点的预览线
+            if (this.currentPolygon.length >= 2) {
+              ctx.lineTo(this.currentPolygon[0].x, this.currentPolygon[0].y);
+            }
+          }
+          ctx.stroke();
           ctx.setLineDash([]);
+
+          // 绘制顶点
+          for (const pt of this.currentPolygon) {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 5, 0, 2 * Math.PI);
+            ctx.fillStyle = "rgba(255,180,0,1)";
+            ctx.fill();
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
         }
       }
 
       ctx.restore();
     },
     undo() {
-      if (!this.rects.length) return;
-      this.rects.pop();
+      if (!this.polygons.length) return;
+      this.polygons.pop();
       this.redraw();
     },
-    clearRects() {
-      this.rects = [];
-      this.currentRect = null;
+    clearPolygons() {
+      this.polygons = [];
+      this.currentPolygon = [];
+      this.previewPoint = null;
       this.redraw();
     },
     async saveAndUpload() {
-      if (!this.rects.length) {
-        this.$message.warning("请先绘制至少一个矩形");
+      if (!this.polygons.length) {
+        this.$message.warning("请先绘制至少一个多边形");
         return;
       }
       this.uploading = true;
@@ -362,9 +416,19 @@ export default {
         ctx.fillStyle = "black";
         ctx.fillRect(0, 0, c.width, c.height);
         ctx.fillStyle = "white";
-        for (const r of this.rects) {
-          ctx.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+
+        // 填充所有多边形
+        for (const polygon of this.polygons) {
+          if (polygon.points.length < 3) continue;
+          ctx.beginPath();
+          ctx.moveTo(polygon.points[0].x, polygon.points[0].y);
+          for (let i = 1; i < polygon.points.length; i++) {
+            ctx.lineTo(polygon.points[i].x, polygon.points[i].y);
+          }
+          ctx.closePath();
+          ctx.fill();
         }
+
         c.toBlob(
           (b) => (b ? resolve(b) : reject(new Error("toBlob失败"))),
           "image/png",
@@ -443,13 +507,13 @@ export default {
         maskImage.onload = () => {
           console.log('Mask image loaded successfully');
 
-          // 先退出SAM2模式，进入矩形编辑模式
+          // 先退出SAM2模式，进入多边形编辑模式
           this.sam2ClickMode = false;
           this.clickPoints = [];
 
-          // 然后分析mask图像，提取白色区域作为矩形
-          // 这样redraw会使用矩形模式来绘制
-          this.extractRectsFromMask(maskImage);
+          // 然后分析mask图像，提取白色区域作为多边形
+          // 这样redraw会使用多边形模式来绘制
+          this.extractPolygonsFromMask(maskImage);
         };
         maskImage.onerror = (e) => {
           console.error('Mask image load error:', e);
@@ -467,7 +531,7 @@ export default {
     // SAM2 一键分割 (自动模式 - 已弃用)
     async runSam2Segment() {
       // 如果已有标注，需要确认
-      if (this.rects.length > 0) {
+      if (this.polygons.length > 0) {
         try {
           await this.$confirm(
             '使用AI分割将替换当前标注，是否继续？',
@@ -507,8 +571,8 @@ export default {
         // 解码mask_data (base64 PNG)
         const maskImage = new Image();
         maskImage.onload = () => {
-          // 分析mask图像，提取白色区域作为矩形
-          this.extractRectsFromMask(maskImage);
+          // 分析mask图像，提取白色区域作为多边形
+          this.extractPolygonsFromMask(maskImage);
         };
         maskImage.onerror = () => {
           throw new Error('Mask图像加载失败');
@@ -522,9 +586,9 @@ export default {
         this.sam2Processing = false;
       }
     },
-    // 从mask图像提取矩形区域
-    extractRectsFromMask(maskImage) {
-      console.log('Extracting rects from mask, image size:', maskImage.width, 'x', maskImage.height);
+    // 从mask图像提取多边形区域(简化为边界框多边形)
+    extractPolygonsFromMask(maskImage) {
+      console.log('Extracting polygons from mask, image size:', maskImage.width, 'x', maskImage.height);
 
       const canvas = document.createElement('canvas');
       canvas.width = maskImage.width;
@@ -565,24 +629,20 @@ export default {
       });
 
       if (hasWhitePixel) {
-        const rect = {
-          x1: minX,
-          y1: minY,
-          x2: maxX,
-          y2: maxY
+        // 创建边界框的多边形(矩形的四个角)
+        const polygon = {
+          points: [
+            { x: minX, y: minY },
+            { x: maxX, y: minY },
+            { x: maxX, y: maxY },
+            { x: minX, y: maxY }
+          ]
         };
 
-        // 清除现有矩形并添加新的
-        this.rects = [rect];
+        // 清除现有多边形并添加新的
+        this.polygons = [polygon];
 
-        console.log('Created rect:', {
-          x1: rect.x1,
-          y1: rect.y1,
-          x2: rect.x2,
-          y2: rect.y2,
-          width: rect.x2 - rect.x1,
-          height: rect.y2 - rect.y1
-        });
+        console.log('Created polygon:', polygon);
 
         // 确保在下一个tick后重绘，让Vue完成响应式更新
         this.$nextTick(() => {
@@ -600,8 +660,9 @@ export default {
       this.innerVisible = false;
     },
     handleClosed() {
-      this.rects = [];
-      this.currentRect = null;
+      this.polygons = [];
+      this.currentPolygon = [];
+      this.previewPoint = null;
       this.imageUrl = "";
     },
   },
