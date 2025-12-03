@@ -63,7 +63,7 @@ class CT3DReconstructor:
     
         return mesh
 
-    def create_target_mesh(self, level=0.5, hole_size=300.0, format='stl'):
+    def create_target_mesh(self, level=0.5, hole_size=300.0, format='stl', model_name='target_mesh'):
         """
         只创建目标区域网格
 
@@ -71,6 +71,7 @@ class CT3DReconstructor:
             level: Marching Cubes 阈值
             hole_size: 孔洞填充大小
             format: 输出格式 ('stl' 或 'obj')
+            model_name: 模型文件名（不含扩展名）
 
         返回:
             str: 保存的文件路径
@@ -81,7 +82,7 @@ class CT3DReconstructor:
             level=level,
             hole_size=hole_size
         )
-        filename = f"target_mesh.{format.lower()}"
+        filename = f"{model_name}.{format.lower()}"
         filepath = self._save_mesh(self.target_mesh, filename)
         print("✅ 目标区域网格创建完成！")
         return filepath
@@ -248,7 +249,7 @@ def reconstruct_ct_volume(mask_dir, output_dir, spacing, visualize=False, format
     )
 
     # 4️⃣ 生成3D网格
-    model_path = reconstructor.create_target_mesh(level=0.5, hole_size=300.0, format=format)
+    model_path = reconstructor.create_target_mesh(level=0.5, hole_size=300.0, format=format, model_name=model_name)
 
     # 5️⃣ 计算体积
     volume_mm3 = reconstructor.compute_volume()
