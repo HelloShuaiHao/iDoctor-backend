@@ -221,15 +221,6 @@
           >
             {{ reconstructing3D ? '重建中...' : '重建3D模型' }}
           </el-button>
-          <!-- 临时调试按钮 -->
-          <el-button
-            size="mini"
-            type="danger"
-            @click="debugToggle3DViewer"
-            style="margin-left: 10px;"
-          >
-            调试: {{ show3DViewer ? '隐藏' : '显示' }}
-          </el-button>
         </div>
       </div>
 
@@ -250,31 +241,14 @@
         <p>暂无3D模型，请点击"重建3D模型"按钮生成</p>
       </div>
 
-      <!-- 调试信息 -->
-      <div style="padding: 10px; background: #f0f0f0; margin: 10px 0; font-family: monospace; font-size: 12px;">
-        <div>show3DViewer: {{ show3DViewer }}</div>
-        <div>reconstructing3D: {{ reconstructing3D }}</div>
-        <div>条件结果: {{ show3DViewer && !reconstructing3D }}</div>
-        <div>selectedMaskType: {{ selectedMaskType }}</div>
-        <div>patient: {{ patient }}</div>
-        <div>date: {{ date }}</div>
-      </div>
-
       <!-- 3D查看器 -->
-      <div v-if="show3DViewer && !reconstructing3D" style="border: 2px solid red; padding: 10px;">
-        <p style="color: red; font-weight: bold;">这个DIV应该显示如果条件为真</p>
-        <p style="color: blue;">准备渲染 Model3DViewer 组件...</p>
-        <div style="border: 2px solid blue; min-height: 100px; padding: 10px;">
-          <p>如果这里是空的，说明组件加载失败</p>
-          <model-3d-viewer
-            v-if="true"
-            :patient="patient"
-            :date="date"
-            :selected-mask-type="selectedMaskType"
-            :key="`3d-viewer-${selectedMaskType}-${modelRefreshKey}`"
-          />
-        </div>
-      </div>
+      <Model3DViewer
+        v-if="show3DViewer && !reconstructing3D"
+        :patient="patient"
+        :date="date"
+        :selected-mask-type="selectedMaskType"
+        :key="`3d-viewer-${selectedMaskType}-${modelRefreshKey}`"
+      />
     </section>
 
     <section class="card" style="margin-bottom: 18px">
@@ -918,20 +892,6 @@ export default {
           this.reconstructing3D = false;
         }
       }, 3000); // 3秒轮询一次
-    },
-    debugToggle3DViewer() {
-      console.log('[调试] 切换前 show3DViewer:', this.show3DViewer);
-      console.log('[调试] 切换前 reconstructing3D:', this.reconstructing3D);
-      this.show3DViewer = !this.show3DViewer;
-      this.reconstructing3D = false; // 确保不是重建状态
-      console.log('[调试] 切换后 show3DViewer:', this.show3DViewer);
-      this.$nextTick(() => {
-        console.log('[调试] nextTick 后检查 DOM...');
-        const viewer = this.$el.querySelector('.model-3d-viewer');
-        const viewerContainer = this.$el.querySelector('.viewer-container');
-        console.log('[调试] .model-3d-viewer:', viewer ? '✅ 存在' : '❌ 不存在');
-        console.log('[调试] .viewer-container:', viewerContainer ? '✅ 存在' : '❌ 不存在');
-      });
     },
   },
 };
