@@ -8,7 +8,7 @@
 
     <div style="background: lightblue; padding: 20px; margin-bottom: 20px; border: 3px solid blue;">
       <h2>步骤2: 测试简单组件</h2>
-      <simple-test />
+      <simple-test-component />
     </div>
 
     <div style="background: lightgreen; padding: 20px; margin-bottom: 20px; border: 3px solid green;">
@@ -27,21 +27,27 @@
 
 <script>
 import Model3DViewer from './Model3DViewer.vue';
-
-const SimpleTest = {
-  template: '<div style="border: 3px solid purple; padding: 10px; background: pink;"><h3>✅ SimpleTest 内联组件渲染成功！</h3></div>'
-};
+import SimpleTestComponent from './SimpleTestComponent.vue';
 
 export default {
   name: 'Test3D',
   components: {
     Model3DViewer,
-    SimpleTest
+    SimpleTestComponent
   },
   mounted() {
     console.log('✅✅✅ Test3D 页面已挂载！');
-    console.log('Model3DViewer 组件:', this.$options.components.Model3DViewer);
-    console.log('SimpleTest 组件:', this.$options.components.SimpleTest);
+    console.log('所有已注册组件:', Object.keys(this.$options.components));
+    console.log('Model3DViewer:', this.$options.components.Model3DViewer);
+    console.log('SimpleTestComponent:', this.$options.components.SimpleTestComponent);
+
+    // 检查组件是否有错误
+    this.$nextTick(() => {
+      const simpleTest = this.$el.querySelector('[style*="purple"]');
+      const model3d = this.$el.querySelector('.model-3d-viewer');
+      console.log('SimpleTestComponent DOM 元素:', simpleTest ? '✅ 找到' : '❌ 未找到');
+      console.log('Model3DViewer DOM 元素:', model3d ? '✅ 找到' : '❌ 未找到');
+    });
   }
 };
 </script>
