@@ -1056,6 +1056,7 @@ import pydicom
 
 @app.post("/reconstruct_3d/{patient_name}/{study_date}")
 async def reconstruct_3d(
+    request: Request,
     patient_name: str,
     study_date: str,
     background_tasks: BackgroundTasks,
@@ -1074,9 +1075,12 @@ async def reconstruct_3d(
     """
     logger.info(f"收到3D重建请求: {patient_name}/{study_date}, mask_type={mask_type}")
 
+    # 获取用户ID（如果启用了认证）
+    user_id = getattr(request.state, "user_id", None)
+
     # 检查病例目录是否存在
-    patient_date_dir = os.path.join("./output", patient_name, study_date)
-    if not os.path.exists(patient_date_dir):
+    output_dir = _output_dir(patient_name, study_date, user_id)
+    if not os.path.exists(output_dir):
         raise HTTPException(status_code=404, detail="病例不存在")
 
     # 创建任务
@@ -1094,7 +1098,7 @@ async def reconstruct_3d(
     # 在后台执行重建
     background_tasks.add_task(
         run_3d_reconstruction,
-        task_id, patient_name, study_date, mask_type
+        task_id, patient_name, study_date, mask_type, user_id
     )
 
     return {
@@ -1105,7 +1109,7 @@ async def reconstruct_3d(
         "mask_type": mask_type
     }
 
-def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask_type: str):
+def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask_type: str, user_id: str = None):
     """
     执行3D重建的后台任务
     """
@@ -1115,17 +1119,18 @@ def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask
         logger.info(f"开始3D重建任务: {task_id}")
         task_manager.update_task(task_id, "processing", 10, "准备掩码数据...")
 
-        # 确定掩码目录
-        patient_date_dir = os.path.join("./output", patient_name, study_date)
+        # 获取病例根目录和输出目录
+        patient_root = _patient_root(patient_name, study_date, user_id)
+        output_folder = os.path.join(patient_root, "output")
 
         # 根据类型选择掩码目录
         if mask_type == "psoas":
-            mask_dir = os.path.join(patient_date_dir, "major_mask")
+            mask_dir = os.path.join(output_folder, "major_mask")
         elif mask_type == "muscle":
-            mask_dir = os.path.join(patient_date_dir, "full_mask")
+            mask_dir = os.path.join(output_folder, "full_mask")
         elif mask_type == "vertebra":
             # 椎骨掩码可能在不同位置
-            mask_dir = os.path.join(patient_date_dir, "vertebra_mask")
+            mask_dir = os.path.join(output_folder, "vertebra_mask")
         else:
             raise ValueError(f"不支持的掩码类型: {mask_type}")
 
@@ -1135,7 +1140,7 @@ def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask
         task_manager.update_task(task_id, "processing", 30, "读取DICOM spacing信息...")
 
         # 读取DICOM spacing
-        dicom_dir = os.path.join(patient_date_dir, "dicom")
+        dicom_dir = os.path.join(output_folder, "dicom")
         spacing = (1.0, 1.0, 1.0)  # 默认值
 
         if os.path.exists(dicom_dir):
@@ -1152,14 +1157,14 @@ def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask
 
         task_manager.update_task(task_id, "processing", 50, "执行3D重建...")
 
-        # 创建输出目录
-        output_dir = os.path.join(patient_date_dir, "3d_models")
-        os.makedirs(output_dir, exist_ok=True)
+        # 创建3D模型输出目录
+        model_output_dir = os.path.join(output_folder, "3d_models")
+        os.makedirs(model_output_dir, exist_ok=True)
 
         # 执行重建
         result = reconstruct_ct_volume(
             mask_dir=mask_dir,
-            output_dir=output_dir,
+            output_dir=model_output_dir,
             spacing=spacing,
             visualize=False,
             format='stl',
@@ -1169,7 +1174,7 @@ def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask
         task_manager.update_task(task_id, "processing", 90, "保存重建结果...")
 
         # 保存重建信息到JSON
-        info_file = os.path.join(output_dir, f"{mask_type}_3d_info.json")
+        info_file = os.path.join(model_output_dir, f"{mask_type}_3d_info.json")
         with open(info_file, 'w', encoding='utf-8') as f:
             json.dump({
                 'mask_type': mask_type,
@@ -1205,7 +1210,7 @@ def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask
         )
 
 @app.get("/get_3d_model/{patient_name}/{study_date}/{filename}")
-async def get_3d_model(patient_name: str, study_date: str, filename: str):
+async def get_3d_model(request: Request, patient_name: str, study_date: str, filename: str):
     """
     获取3D模型文件 (STL/OBJ格式)
     """
@@ -1213,8 +1218,12 @@ async def get_3d_model(patient_name: str, study_date: str, filename: str):
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="非法的文件名")
 
+    # 获取用户ID（如果启用了认证）
+    user_id = getattr(request.state, "user_id", None)
+
     # 构建文件路径
-    model_dir = os.path.join("./output", patient_name, study_date, "3d_models")
+    output_folder = _output_dir(patient_name, study_date, user_id)
+    model_dir = os.path.join(output_folder, "3d_models")
     file_path = os.path.join(model_dir, filename)
 
     if not os.path.exists(file_path):
@@ -1235,7 +1244,7 @@ async def get_3d_model(patient_name: str, study_date: str, filename: str):
     )
 
 @app.get("/check_3d_models/{patient_name}/{study_date}")
-async def check_3d_models(patient_name: str, study_date: str):
+async def check_3d_models(request: Request, patient_name: str, study_date: str):
     """
     检查病例可用的3D模型
 
@@ -1253,7 +1262,12 @@ async def check_3d_models(patient_name: str, study_date: str):
             ]
         }
     """
-    model_dir = os.path.join("./output", patient_name, study_date, "3d_models")
+    # 获取用户ID（如果启用了认证）
+    user_id = getattr(request.state, "user_id", None)
+
+    # 构建3D模型目录路径
+    output_folder = _output_dir(patient_name, study_date, user_id)
+    model_dir = os.path.join(output_folder, "3d_models")
 
     if not os.path.exists(model_dir):
         return {"available": False, "models": []}
