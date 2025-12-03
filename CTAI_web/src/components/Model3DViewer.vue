@@ -241,9 +241,12 @@ export default {
       }
     },
     getLoader(url) {
-      if (url.endsWith('.stl')) {
+      // 移除查询参数，只检查文件扩展名
+      const urlWithoutQuery = url.split('?')[0];
+
+      if (urlWithoutQuery.endsWith('.stl')) {
         return new STLLoader();
-      } else if (url.endsWith('.obj')) {
+      } else if (urlWithoutQuery.endsWith('.obj')) {
         return new OBJLoader();
       }
       throw new Error('不支持的模型格式');
