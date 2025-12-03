@@ -10,6 +10,7 @@ import Content from './components/Content.vue'
 import ResultsList from './components/ResultList.vue'
 import ResultDetail from './components/ResultDetail.vue'
 import Login from './components/Login.vue'
+import Test3D from './components/Test3D.vue'
 
 Vue.prototype.$echarts = echarts
 import '../node_modules/element-ui/lib/theme-chalk/index.css'
@@ -27,6 +28,7 @@ Vue.prototype.$http = axios
 const router = new VueRouter({
     routes: [
         { path: '/login', component: Login, meta: { title: '登录', requiresAuth: false } },
+        { path: '/test3d', component: Test3D, meta: { title: '3D测试页面', requiresAuth: false } },
         { path: '/', component: Content, meta: { title: '上传与处理', requiresAuth: true } },
         { path: '/results', component: ResultsList, meta: { title: '结果列表', requiresAuth: true } },
         { path: '/results/:patient/:date', component: ResultDetail, meta: { title: '结果详情', requiresAuth: true } },
