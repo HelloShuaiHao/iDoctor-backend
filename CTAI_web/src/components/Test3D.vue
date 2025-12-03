@@ -22,17 +22,24 @@
         selected-mask-type="psoas"
       />
     </div>
+
+    <div style="background: pink; padding: 20px; margin-bottom: 20px; border: 3px solid red;">
+      <h2>步骤4: 测试全新的 Model3DViewerNew 组件</h2>
+      <model-3d-viewer-new />
+    </div>
   </div>
 </template>
 
 <script>
 import Model3DViewer from './Model3DViewer.vue';
+import Model3DViewerNew from './Model3DViewerNew.vue';
 import SimpleTestComponent from './SimpleTestComponent.vue';
 
 export default {
   name: 'Test3D',
   components: {
     Model3DViewer,
+    Model3DViewerNew,
     SimpleTestComponent
   },
   mounted() {

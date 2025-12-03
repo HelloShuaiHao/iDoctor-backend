@@ -14,24 +14,36 @@ export default {
   props: {
     patient: {
       type: String,
-      required: true
+      default: 'unknown'
     },
     date: {
       type: String,
-      required: true
+      default: 'unknown'
     },
     selectedMaskType: {
       type: String,
       default: 'psoas'
     }
   },
+  created() {
+    console.log('[Model3DViewer] ✅ created 钩子调用');
+  },
+  beforeMount() {
+    console.log('[Model3DViewer] ✅ beforeMount 钩子调用');
+  },
   mounted() {
-    console.log('[3D组件-简化版] ✅ 组件已挂载！');
-    console.log('[3D组件-简化版] Props:', {
+    console.log('[Model3DViewer] ✅✅✅ mounted 钩子调用！');
+    console.log('[Model3DViewer] Props:', {
       patient: this.patient,
       date: this.date,
       selectedMaskType: this.selectedMaskType
     });
+    console.log('[Model3DViewer] $el:', this.$el);
+  },
+  errorCaptured(err, vm, info) {
+    console.error('[Model3DViewer] ❌ 捕获到错误:', err);
+    console.error('[Model3DViewer] 错误信息:', info);
+    return false;
   }
 };
 </script>
