@@ -1251,11 +1251,20 @@ async def get_3d_model(request: Request, patient_name: str, study_date: str, fil
     else:
         media_type = "application/octet-stream"
 
-    return FileResponse(
+    # 创建 FileResponse 并添加 CORS 头
+    response = FileResponse(
         path=file_path,
         media_type=media_type,
         filename=filename
     )
+
+    # 添加 CORS 头以支持跨域访问（Three.js 加载器需要）
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+
+    return response
 
 @app.get("/check_3d_models/{patient_name}/{study_date}")
 async def check_3d_models(request: Request, patient_name: str, study_date: str):
