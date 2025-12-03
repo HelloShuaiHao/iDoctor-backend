@@ -102,6 +102,12 @@ export default {
     }
   },
   mounted() {
+    console.log('[3D组件] mounted 钩子调用', {
+      patient: this.patient,
+      date: this.date,
+      selectedMaskType: this.selectedMaskType,
+      currentModel: this.currentModel
+    });
     this.initScene();
     this.loadModel();
     window.addEventListener('resize', this.onWindowResize);
@@ -117,25 +123,33 @@ export default {
   },
   methods: {
     initScene() {
+      console.log('[3D场景] 开始初始化场景...');
       const container = this.$refs.container;
-      if (!container) return;
+      if (!container) {
+        console.error('[3D场景] 容器元素不存在！');
+        return;
+      }
 
       const width = container.clientWidth;
       const height = container.clientHeight || 500;
+      console.log('[3D场景] 容器尺寸:', { width, height });
 
       // 创建场景
       this.scene = new THREE.Scene();
       this.scene.background = new THREE.Color(0xf5f5f5);
+      console.log('[3D场景] 场景创建完成');
 
       // 创建相机
       this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
       this.camera.position.set(0, 0, 300);
+      console.log('[3D场景] 相机创建完成，位置:', this.camera.position);
 
       // 创建渲染器
       this.renderer = new THREE.WebGLRenderer({ antialias: true });
       this.renderer.setSize(width, height);
       this.renderer.setPixelRatio(window.devicePixelRatio);
       container.appendChild(this.renderer.domElement);
+      console.log('[3D场景] 渲染器创建完成');
 
       // 添加控制器
       this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -144,6 +158,7 @@ export default {
       this.controls.screenSpacePanning = false;
       this.controls.minDistance = 50;
       this.controls.maxDistance = 1000;
+      console.log('[3D场景] 控制器创建完成');
 
       // 添加灯光
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -156,13 +171,16 @@ export default {
       const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
       directionalLight2.position.set(-1, -1, -1);
       this.scene.add(directionalLight2);
+      console.log('[3D场景] 灯光添加完成');
 
       // 添加网格辅助线
       const gridHelper = new THREE.GridHelper(400, 20, 0xcccccc, 0xe0e0e0);
       this.scene.add(gridHelper);
+      console.log('[3D场景] 网格辅助线添加完成');
 
       // 开始渲染循环
       this.animate();
+      console.log('[3D场景] 场景初始化完成，开始渲染循环');
     },
     animate() {
       this.animationId = requestAnimationFrame(this.animate);
@@ -175,7 +193,8 @@ export default {
       this.renderer.render(this.scene, this.camera);
     },
     async loadModel() {
-      console.log('[3D加载] 开始加载模型...', {
+      console.log('[3D加载] ========== 开始加载模型 ==========');
+      console.log('[3D加载] 参数:', {
         patient: this.patient,
         date: this.date,
         currentModel: this.currentModel
@@ -187,6 +206,7 @@ export default {
       try {
         // 移除旧模型
         if (this.currentMesh) {
+          console.log('[3D加载] 移除旧模型');
           this.scene.remove(this.currentMesh);
           if (this.currentMesh.geometry) {
             this.currentMesh.geometry.dispose();
@@ -204,40 +224,69 @@ export default {
         const loader = this.getLoader(modelUrl);
         console.log('[3D加载] 使用加载器:', loader.constructor.name);
 
+        console.log('[3D加载] 开始下载几何体...');
         const geometry = await this.loadGeometry(loader, modelUrl);
-        console.log('[3D加载] 几何体加载成功');
+        console.log('[3D加载] ✅ 几何体下载成功！');
+        console.log('[3D加载] 几何体信息:', {
+          type: geometry.type,
+          hasPosition: !!geometry.attributes.position,
+          vertexCount: geometry.attributes.position?.count,
+          hasIndex: !!geometry.index,
+          faceCount: geometry.index ? geometry.index.count / 3 : geometry.attributes.position?.count / 3
+        });
 
         // 居中几何体
+        console.log('[3D加载] 开始处理几何体...');
         geometry.center();
         geometry.computeBoundingBox();
         geometry.computeVertexNormals();
 
+        const box = geometry.boundingBox;
+        console.log('[3D加载] 包围盒:', {
+          min: box.min,
+          max: box.max,
+          size: {
+            x: box.max.x - box.min.x,
+            y: box.max.y - box.min.y,
+            z: box.max.z - box.min.z
+          }
+        });
+
         // 创建材质
+        const color = this.getModelColor(this.currentModel);
+        console.log('[3D加载] 创建材质，颜色:', '#' + color.toString(16).padStart(6, '0'));
         const material = new THREE.MeshPhongMaterial({
-          color: this.getModelColor(this.currentModel),
+          color: color,
           specular: 0x111111,
           shininess: 200,
           side: THREE.DoubleSide
         });
 
         // 创建网格
+        console.log('[3D加载] 创建网格...');
         this.currentMesh = new THREE.Mesh(geometry, material);
         this.scene.add(this.currentMesh);
+        console.log('[3D加载] ✅ 网格已添加到场景');
+        console.log('[3D加载] 场景中的对象数量:', this.scene.children.length);
 
         // 更新统计信息
         this.updateModelStats(geometry);
 
         // 调整相机位置以适应模型
+        console.log('[3D加载] 调整相机位置...');
         this.fitCameraToModel();
 
-        console.log('[3D加载] 模型加载完成');
+        console.log('[3D加载] ========== 模型加载完成 ==========');
         this.$message.success('3D模型加载成功');
       } catch (err) {
-        console.error('[3D加载] 加载3D模型失败:', err);
+        console.error('[3D加载] ========== 加载失败 ==========');
+        console.error('[3D加载] 错误详情:', err);
+        console.error('[3D加载] 错误堆栈:', err.stack);
         this.error = err.message || '加载3D模型失败，请检查模型文件是否存在';
         this.$message.error(this.error);
       } finally {
         this.loading = false;
+        console.log('[3D加载] loading 状态设置为 false');
       }
     },
     getLoader(url) {
@@ -249,26 +298,39 @@ export default {
       throw new Error('不支持的模型格式');
     },
     loadGeometry(loader, url) {
+      console.log('[3D加载器] 开始加载:', url);
       return new Promise((resolve, reject) => {
         loader.load(
           url,
           (geometry) => {
+            console.log('[3D加载器] ✅ 加载成功回调触发');
+            console.log('[3D加载器] 几何体类型:', geometry.type || geometry.constructor.name);
+            console.log('[3D加载器] isBufferGeometry:', geometry.isBufferGeometry);
+            console.log('[3D加载器] 有children:', !!geometry.children);
+
             if (geometry.isBufferGeometry) {
+              console.log('[3D加载器] 返回 BufferGeometry');
               resolve(geometry);
             } else if (geometry.children && geometry.children.length > 0) {
               // OBJ可能返回Group
+              console.log('[3D加载器] 从 Group 中提取几何体，children数量:', geometry.children.length);
               resolve(geometry.children[0].geometry);
             } else {
+              console.error('[3D加载器] ❌ 无效的几何体类型');
               reject(new Error('无效的几何体'));
             }
           },
           (progress) => {
             if (progress.lengthComputable) {
               const percent = (progress.loaded / progress.total) * 100;
-              console.log(`加载进度: ${percent.toFixed(2)}%`);
+              console.log(`[3D加载器] 下载进度: ${percent.toFixed(1)}% (${progress.loaded}/${progress.total} 字节)`);
+            } else {
+              console.log(`[3D加载器] 已下载: ${progress.loaded} 字节`);
             }
           },
           (error) => {
+            console.error('[3D加载器] ❌ 加载失败回调触发');
+            console.error('[3D加载器] 错误对象:', error);
             reject(error);
           }
         );
@@ -314,21 +376,32 @@ export default {
       };
     },
     fitCameraToModel() {
-      if (!this.currentMesh) return;
+      if (!this.currentMesh) {
+        console.warn('[3D相机] 没有网格对象，无法调整相机');
+        return;
+      }
 
       const box = new THREE.Box3().setFromObject(this.currentMesh);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
+
+      console.log('[3D相机] 模型尺寸:', size);
+      console.log('[3D相机] 模型中心:', center);
 
       const maxDim = Math.max(size.x, size.y, size.z);
       const fov = this.camera.fov * (Math.PI / 180);
       let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
       cameraZ *= 1.5; // 增加一些边距
 
-      this.camera.position.set(center.x, center.y, center.z + cameraZ);
+      const newPosition = { x: center.x, y: center.y, z: center.z + cameraZ };
+      console.log('[3D相机] 新相机位置:', newPosition);
+
+      this.camera.position.set(newPosition.x, newPosition.y, newPosition.z);
       this.camera.lookAt(center);
       this.controls.target.copy(center);
       this.controls.update();
+
+      console.log('[3D相机] 相机调整完成');
     },
     resetCamera() {
       this.camera.position.set(0, 0, 300);

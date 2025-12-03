@@ -769,38 +769,53 @@ export default {
     },
     async check3DModelsAvailability() {
       try {
-        console.log('[3D检查] 开始检查3D模型可用性...', {
+        console.log('[3D检查] ========== 开始检查3D模型可用性 ==========');
+        console.log('[3D检查] 当前状态:', {
           patient: this.patient,
           date: this.date,
-          selectedMaskType: this.selectedMaskType
+          selectedMaskType: this.selectedMaskType,
+          show3DViewer: this.show3DViewer,
+          reconstructing3D: this.reconstructing3D
         });
 
         const result = await check3DModels(this.patient, this.date);
         console.log('[3D检查] API返回结果:', result);
 
         if (result.available && result.models && result.models.length > 0) {
-          console.log('[3D检查] 找到模型:', result.models);
+          console.log('[3D检查] ✅ 找到模型，数量:', result.models.length);
+          console.log('[3D检查] 模型详情:', result.models);
 
           // 检查是否有当前选择类型的模型
           const hasSelectedType = result.models.some(m => m.mask_type === this.selectedMaskType);
-          console.log('[3D检查] 是否有选中类型的模型:', hasSelectedType, 'selectedMaskType:', this.selectedMaskType);
+          console.log('[3D检查] 是否有选中类型的模型:', hasSelectedType);
+          console.log('[3D检查] 选中的类型:', this.selectedMaskType);
 
+          console.log('[3D检查] 设置 show3DViewer =', hasSelectedType);
           this.show3DViewer = hasSelectedType;
+          console.log('[3D检查] show3DViewer 已设置为:', this.show3DViewer);
 
           if (hasSelectedType) {
             // 找到对应模型的体积信息
             const model = result.models.find(m => m.mask_type === this.selectedMaskType);
+            console.log('[3D检查] 找到对应模型:', model);
             if (model && model.volume_mm3) {
-              // 可以在这里更新summary中的体积信息
-              console.log(`[3D检查] ${this.selectedMaskType} 体积: ${model.volume_mm3} mm³`);
+              console.log(`[3D检查] ${this.selectedMaskType} 体积: ${model.volume_mm3} mm³ (${model.volume_ml} mL)`);
             }
+          } else {
+            console.warn('[3D检查] ⚠️ 没有找到 ' + this.selectedMaskType + ' 类型的模型');
           }
         } else {
-          console.log('[3D检查] 没有可用的3D模型');
+          console.log('[3D检查] ❌ 没有可用的3D模型');
           this.show3DViewer = false;
         }
+
+        console.log('[3D检查] ========== 检查完成 ==========');
+        console.log('[3D检查] 最终状态:', {
+          show3DViewer: this.show3DViewer,
+          reconstructing3D: this.reconstructing3D
+        });
       } catch (error) {
-        console.error('[3D检查] 检查3D模型失败:', error);
+        console.error('[3D检查] ❌ 检查3D模型失败:', error);
         this.show3DViewer = false;
       }
     },
