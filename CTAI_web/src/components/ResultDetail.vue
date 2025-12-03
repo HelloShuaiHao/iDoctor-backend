@@ -250,14 +250,26 @@
         <p>暂无3D模型，请点击"重建3D模型"按钮生成</p>
       </div>
 
+      <!-- 调试信息 -->
+      <div style="padding: 10px; background: #f0f0f0; margin: 10px 0; font-family: monospace; font-size: 12px;">
+        <div>show3DViewer: {{ show3DViewer }}</div>
+        <div>reconstructing3D: {{ reconstructing3D }}</div>
+        <div>条件结果: {{ show3DViewer && !reconstructing3D }}</div>
+        <div>selectedMaskType: {{ selectedMaskType }}</div>
+        <div>patient: {{ patient }}</div>
+        <div>date: {{ date }}</div>
+      </div>
+
       <!-- 3D查看器 -->
-      <model-3d-viewer
-        v-if="show3DViewer && !reconstructing3D"
-        :patient="patient"
-        :date="date"
-        :selected-mask-type="selectedMaskType"
-        :key="`3d-viewer-${selectedMaskType}-${modelRefreshKey}`"
-      />
+      <div v-if="show3DViewer && !reconstructing3D" style="border: 2px solid red; padding: 10px;">
+        <p style="color: red; font-weight: bold;">这个DIV应该显示如果条件为真</p>
+        <model-3d-viewer
+          :patient="patient"
+          :date="date"
+          :selected-mask-type="selectedMaskType"
+          :key="`3d-viewer-${selectedMaskType}-${modelRefreshKey}`"
+        />
+      </div>
     </section>
 
     <section class="card" style="margin-bottom: 18px">
