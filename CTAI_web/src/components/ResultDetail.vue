@@ -263,12 +263,17 @@
       <!-- 3D查看器 -->
       <div v-if="show3DViewer && !reconstructing3D" style="border: 2px solid red; padding: 10px;">
         <p style="color: red; font-weight: bold;">这个DIV应该显示如果条件为真</p>
-        <model-3d-viewer
-          :patient="patient"
-          :date="date"
-          :selected-mask-type="selectedMaskType"
-          :key="`3d-viewer-${selectedMaskType}-${modelRefreshKey}`"
-        />
+        <p style="color: blue;">准备渲染 Model3DViewer 组件...</p>
+        <div style="border: 2px solid blue; min-height: 100px; padding: 10px;">
+          <p>如果这里是空的，说明组件加载失败</p>
+          <model-3d-viewer
+            v-if="true"
+            :patient="patient"
+            :date="date"
+            :selected-mask-type="selectedMaskType"
+            :key="`3d-viewer-${selectedMaskType}-${modelRefreshKey}`"
+          />
+        </div>
       </div>
     </section>
 
