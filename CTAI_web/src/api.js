@@ -167,10 +167,13 @@ export async function continueAfterL3(patient_name, study_date) {
 }
 
 // 获取 L3 相关图片（修复：正确处理URL参数，添加时间戳和token）
-export function getL3ImageUrl(patient_name, study_date, folder, filename) {
+// bustCache: 是否添加时间戳破坏缓存，默认false（允许浏览器缓存）
+export function getL3ImageUrl(patient_name, study_date, folder, filename, bustCache = false) {
   const token = localStorage.getItem('access_token');
   const params = new URLSearchParams();
-  params.append('t', Date.now());  // 添加时间戳防止缓存
+  if (bustCache) {
+    params.append('t', Date.now());  // 只在需要时添加时间戳防止缓存
+  }
   if (token) {
     params.append('token', token);
   }

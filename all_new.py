@@ -207,8 +207,29 @@ def l3_detect(input_folder, output_folder):
 
     img_path = os.path.join(L3_png_folder, SAGITTAL_INPUT)
     results = process_spine_and_vertebrae(img_path, whole_weights, vertebra_weights, ver_folder)
+
+    if results is None:
+        return {"error": "检测失败，椎体数量不足"}
+
     L3_mask_path = results["L3_mask"]
+    L3_overlay_path = results["L3_overlay"]
+    L3_highlight_path = results.get("L3_highlight")
     print("L3_mask_path:", L3_mask_path)
+    print("L3_overlay_path:", L3_overlay_path)
+    print("L3_highlight_path:", L3_highlight_path)
+
+    # 返回相对于output文件夹的路径，方便前端访问
+    # 优先使用高亮版本
+    if L3_highlight_path:
+        rel_overlay = os.path.relpath(L3_highlight_path, output_folder)
+    else:
+        rel_overlay = os.path.relpath(L3_overlay_path, output_folder)
+
+    return {
+        "success": True,
+        "l3_overlay": rel_overlay,  # 前端会用这个路径
+        "message": "L3 检测完成"
+    }
 
 
 

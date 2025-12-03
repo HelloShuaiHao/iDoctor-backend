@@ -782,7 +782,7 @@ def get_output_image(request: Request, patient_name: str, study_date: str, folde
     patient_root = _patient_root(patient_name, study_date, user_id)
     file_path = os.path.join(patient_root, "output", folder, filename)
     if not os.path.exists(file_path):
-        return {"error": "图片不存在"}
+        raise HTTPException(status_code=404, detail="图片不存在")
 
     # 创建 FileResponse 并添加 CORS 头
     response = FileResponse(file_path, media_type="image/png")

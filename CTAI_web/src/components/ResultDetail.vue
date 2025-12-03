@@ -146,22 +146,7 @@
     <section class="card">
       <div class="card-title">{{ $t("result.keyImages") }}</div>
 
-      <!-- 综合覆盖图(包含肌肉+脂肪) -->
-      <div v-if="allOverlayImages.length" style="margin-bottom: 20px;">
-        <h4 style="font-size: 14px; color: #666; margin-bottom: 8px;">综合覆盖图 (肌肉 + 脂肪)</h4>
-        <div class="img-grid">
-          <div v-for="img in allOverlayImages" :key="img" class="img-item">
-            <el-image
-              :src="getL3ImageUrl(patient, date, 'all_overlay', img)"
-              fit="cover"
-              :preview-src-list="allOverlayPreviewList"
-            />
-            <div class="caption">{{ img }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 原有肌肉覆盖图 -->
+      <!-- 肌肉覆盖图 (放在上方) -->
       <div v-if="middle_images.length">
         <h4 style="font-size: 14px; color: #666; margin-bottom: 8px;">肌肉覆盖图</h4>
         <div class="img-grid">
@@ -184,6 +169,31 @@
         >
           {{ $t("actions.manualMiddleMask") }}
         </el-button>
+      </div>
+
+      <!-- 综合覆盖图(包含肌肉+脂肪) - 可折叠 -->
+      <div v-if="allOverlayImages.length" style="margin-top: 20px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <h4 style="font-size: 14px; color: #666; margin: 0;">综合覆盖图 (肌肉 + 脂肪)</h4>
+          <el-button
+            size="mini"
+            @click="allOverlayCollapsed = !allOverlayCollapsed"
+            :icon="allOverlayCollapsed ? 'el-icon-arrow-down' : 'el-icon-arrow-up'"
+          >
+            {{ allOverlayCollapsed ? '展开' : '收起' }} ({{ allOverlayImages.length }} 张)
+          </el-button>
+        </div>
+        <div v-show="!allOverlayCollapsed" class="img-grid">
+          <div v-for="(img, index) in allOverlayImages" :key="img" class="img-item">
+            <el-image
+              :src="allOverlayPreviewList[index]"
+              fit="cover"
+              :preview-src-list="allOverlayPreviewList"
+              lazy
+            />
+            <div class="caption">{{ img }}</div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -218,7 +228,11 @@
       </div>
 
       <div v-if="l3ImageUrl" class="l3-preview">
-        <img :src="l3ImageUrl" class="l3-preview-img" />
+        <img
+          :src="l3ImageUrl"
+          :class="['l3-preview-img', { 'no-flip': isL3HighlightImage }]"
+          @error="handleL3ImageError"
+        />
         <div class="l3-preview-tip">
           {{ $t("result.l3Preview") }}
         </div>
@@ -258,12 +272,13 @@ import axios from 'axios';
 export default {
   name: "ResultDetail",
   components: { L3MaskEditor, MiddleMaskEditor },
-  data() {
+    data() {
     return {
       loading: true,
       csv_files: {},
       middle_images: [],
       allOverlayImages: [], // 综合覆盖图(肌肉+脂肪)
+      allOverlayCollapsed: true, // 综合覆盖图折叠状态
       rows: [],
       summary: null,
       previewList: [],
@@ -279,6 +294,8 @@ export default {
       l3PollTimer: null,
       l3Progress: 0,
       l3ProgressMessage: "",
+      l3ImageUrlIndex: 0, // 当前尝试的L3图片路径索引
+      l3PossibleUrls: [], // 所有可能的L3图片路径
     };
   },
   beforeDestroy() {
@@ -293,6 +310,12 @@ export default {
     },
     date() {
       return this.$route.params.date;
+    },
+    isL3HighlightImage() {
+      // 判断当前显示的是否是verseg新方法生成的图片（已预翻转）
+      return this.l3ImageUrl && (
+        this.l3ImageUrl.includes('verseg/sagittal_midResize')
+      );
     },
   },
   async created() {
@@ -331,6 +354,9 @@ export default {
         this.axisalMainName = this.middleMainName
           ? this.middleMainName.replace("_middle.png", ".png")
           : "";
+
+        // 自动加载 L3 图片（如果存在）
+        this.loadL3Image();
       } catch (e) {
         this.$message.error(this.$t("messages.fetchFail"));
       } finally {
@@ -621,20 +647,55 @@ export default {
       }, 5000); // 5 秒轮询一次
     },
     loadL3Image() {
-      this.l3ImageUrl = this.versionedL3Url("L3_overlay", "L3_clean.png");
+      // 定义所有可能的L3图片位置（按优先级排序）
+      const possibleLocations = [
+        // verseg新方法生成的文件 - 高亮版本（最优先）
+        { folder: 'verseg', filename: 'sagittal_midResize_0000_L3_highlight.png' },
+        { folder: 'verseg', filename: 'sagittal_midResize_0000_L3_overlay.png' },
+        { folder: 'verseg', filename: 'sagittal_midResize_0000_whole_overlay.png' },
+        { folder: 'verseg', filename: 'sagittal_midResize_0000_vertebra_overlay.png' },
+        // 旧方法可能的位置
+        { folder: 'verseg', filename: 'L3_clean.png' },
+        { folder: 'verseg', filename: 'L3_overlay.png' },
+        { folder: 'L3_overlay', filename: 'L3_clean.png' },
+        { folder: 'L3_clean', filename: 'L3_clean.png' },
+        { folder: 'L3', filename: 'L3_clean.png' },
+        { folder: 'L3', filename: 'L3_overlay.png' },
+      ];
+
+      // 生成所有可能的URL
+      this.l3PossibleUrls = possibleLocations.map(loc =>
+        getL3ImageUrl(this.patient, this.date, loc.folder, loc.filename, false)
+      );
+
+      // 从第一个开始尝试
+      this.l3ImageUrlIndex = 0;
+      this.tryNextL3Image();
+    },
+    tryNextL3Image() {
+      if (this.l3ImageUrlIndex < this.l3PossibleUrls.length) {
+        this.l3ImageUrl = this.l3PossibleUrls[this.l3ImageUrlIndex];
+      } else {
+        // 所有位置都尝试过了，没有找到图片
+        this.l3ImageUrl = "";
+      }
+    },
+    handleL3ImageError() {
+      // 当前图片加载失败，尝试下一个位置
+      this.l3ImageUrlIndex++;
+      this.tryNextL3Image();
     },
     setL3Overlay(relPath) {
       if (!relPath) return;
       const parts = relPath.split("/");
       const folder = parts.shift();
       const filename = parts.join("/") || "L3_clean.png";
-      this.l3ImageUrl = this.versionedL3Url(folder, filename);
+      // 强制刷新：使用缓存破坏
+      this.l3ImageUrl = getL3ImageUrl(this.patient, this.date, folder, filename, true);
     },
     versionedL3Url(folder, filename) {
-      const base = getL3ImageUrl(this.patient, this.date, folder, filename);
-      // 如果URL已经有查询参数（token），用 & 连接，否则用 ?
-      const separator = base.includes('?') ? '&' : '?';
-      return `${base}${separator}t=${Date.now()}`;
+      // L3 图片需要缓存破坏，因为会被更新
+      return getL3ImageUrl(this.patient, this.date, folder, filename, true);
     },
   },
 };
@@ -744,6 +805,10 @@ export default {
   display: block;
   transform: rotate(180deg) scaleX(-1);
   transform-origin: center;
+}
+.l3-preview-img.no-flip {
+  /* highlight图片已在后端预翻转，不需要前端再翻转 */
+  transform: none;
 }
 .l3-preview-tip {
   font-size: 12px;

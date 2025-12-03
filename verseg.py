@@ -102,7 +102,19 @@ def process_spine_and_vertebrae(
     for idx, (i, cy, m) in enumerate(sorted_vertebrae):
         label = f"L{idx+1}"
         mask_img = (m * 255).astype(np.uint8)
-        overlay_img = cv2.bitwise_and(im, im, mask=m)
+
+        # 创建彩色overlay：在原图上叠加半透明的彩色mask
+        overlay_img = im.copy()
+        # 为L3使用绿色，其他椎体使用蓝色
+        color = (0, 255, 0) if idx == 2 else (255, 0, 0)  # BGR格式: 绿色 for L3, 蓝色 for others
+        colored_mask = np.zeros_like(im)
+        colored_mask[m > 0] = color
+        # 使用alpha混合：原图70% + mask 30%
+        overlay_img = cv2.addWeighted(overlay_img, 0.7, colored_mask, 0.3, 0)
+
+        # 翻转overlay图片（与前端显示方向一致）
+        overlay_img = cv2.rotate(overlay_img, cv2.ROTATE_180)
+        overlay_img = cv2.flip(overlay_img, 1)  # 水平翻转
 
         cv2.imwrite(os.path.join(output_dir, f"{base_name}_{label}_mask.png"), mask_img)
         cv2.imwrite(os.path.join(output_dir, f"{base_name}_{label}_overlay.png"), overlay_img)
@@ -111,9 +123,31 @@ def process_spine_and_vertebrae(
     cv2.imwrite(os.path.join(output_dir, f"{base_name}_whole_overlay.png"), whole_overlay)
     cv2.imwrite(os.path.join(output_dir, f"{base_name}_vertebra_overlay.png"), vertebra_overlay)
 
+    # === Step 6: 生成专门的L3高亮图（在原图上绘制所有椎体并高亮L3） ===
+    l3_highlight_img = im.copy()
+    for idx, (i, cy, m) in enumerate(sorted_vertebrae):
+        if idx == 2:  # L3
+            # L3使用亮绿色高亮
+            color = (0, 255, 0)  # BGR: 绿色
+            alpha = 0.5
+        else:
+            # 其他椎体使用半透明蓝色
+            color = (255, 100, 0)  # BGR: 淡蓝色
+            alpha = 0.2
+
+        colored_mask = np.zeros_like(l3_highlight_img)
+        colored_mask[m > 0] = color
+        l3_highlight_img = cv2.addWeighted(l3_highlight_img, 1.0, colored_mask, alpha, 0)
+
+    # 翻转图片（rotate 180° + flip horizontal），这样前端可以直接显示
+    l3_highlight_img = cv2.rotate(l3_highlight_img, cv2.ROTATE_180)
+    l3_highlight_img = cv2.flip(l3_highlight_img, 1)  # 水平翻转
+
+    cv2.imwrite(os.path.join(output_dir, f"{base_name}_L3_highlight.png"), l3_highlight_img)
+
     print(f"✅ 已完成处理: {img_path}")
     print(f"结果保存在 {output_dir}/")
-    
+
     # === ✅ 仅提取并返回 L3 相关结果（返回路径，不再重复保存） ===
     if len(sorted_vertebrae) >= 3:
         _, _, L3_mask_array = sorted_vertebrae[2]  # 第3个是L3
@@ -122,6 +156,7 @@ def process_spine_and_vertebrae(
         base_name = os.path.splitext(os.path.basename(img_path))[0]
         L3_mask_path = os.path.join(output_dir, f"{base_name}_{label}_mask.png")
         L3_overlay_path = os.path.join(output_dir, f"{base_name}_{label}_overlay.png")
+        L3_highlight_path = os.path.join(output_dir, f"{base_name}_L3_highlight.png")
         whole_overlay_path = os.path.join(output_dir, f"{base_name}_whole_overlay.png")
         vertebra_overlay_path = os.path.join(output_dir, f"{base_name}_vertebra_overlay.png")
 
@@ -129,6 +164,7 @@ def process_spine_and_vertebrae(
         return {
             "L3_mask": L3_mask_path,
             "L3_overlay": L3_overlay_path,
+            "L3_highlight": L3_highlight_path,  # 新增：高亮版本
             "whole_overlay": whole_overlay_path,
             "vertebra_overlay": vertebra_overlay_path
         }
