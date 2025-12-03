@@ -83,7 +83,9 @@ from compute import compute_manual_middle_statistics
 
 
 logger.info("Creating FastAPI app...")
-app = FastAPI()
+# Create a root app and a ctai app with /api/ctai prefix
+root_app = FastAPI()
+app = FastAPI()  # This will be mounted at /api/ctai
 logger.info("FastAPI app created")
 
 # 全局任务状态字典 (后台计算)
@@ -1286,6 +1288,22 @@ async def check_3d_models(patient_name: str, study_date: str):
     }
 
 # ==================== 3D重建端点结束 ====================
+
+# Mount the app with /api/ctai prefix for compatibility
+root_app.mount("/api/ctai", app)
+
+# Also mount at root for backward compatibility
+root_app.mount("/", app)
+
+# Add CORS middleware to root_app
+root_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+logger.info("✅ Root app configured with /api/ctai prefix support")
 
 def safe_clear_folder(folder, patterns):
     if not os.path.isdir(folder):
