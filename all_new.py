@@ -228,8 +228,10 @@ def continue_after_l3(input_folder, output_folder):
     fat_overlay_folder = os.path.join(output_folder, "fat_overlay")
     full_mask_folder = os.path.join(output_folder, "full_mask")
     full_cleaned_folder = os.path.join(output_folder, "clean_full_mask")
+    full_removed_folder = os.path.join(output_folder, "full_removed")
     full_mask255_folder = os.path.join(output_folder, "full_255mask")
     hulls_output_dir = os.path.join(output_folder, "hulls_output")
+    hulls_output_dir_new = os.path.join(output_folder, "hulls_output_new")
     full_filtered_folder = os.path.join(output_folder, "full_filtered") # 最终全肌肉mask
     full_recon_folder = os.path.join(output_folder, "full_mask_recon")
     full_overlay_folder = os.path.join(output_folder, "full_overlay") # 肌肉部分的覆盖图
@@ -267,9 +269,11 @@ def continue_after_l3(input_folder, output_folder):
     L3_mask_path = os.path.join(ver_folder, f"{base_name}_{label}_mask.png")
 
     mask = load_mask(L3_mask_path)
-    restored_mask = cv2.resize(mask, (orig_width, orig_height), interpolation=cv2.INTER_NEAREST)
+    # For sagittal mask: rows=Z, cols=Y, so resize to (width=Y, height=Z) in OpenCV
+    restored_mask = cv2.resize(mask, (orig_height, volume.shape[0]), interpolation=cv2.INTER_NEAREST)
 
-    print("DEBUG: restored mask shape:", mask.shape)
+    print("DEBUG: restored mask shape:", restored_mask.shape)
+    print(f"DEBUG: volume shape: {volume.shape} (Z, Y, X) = ({volume.shape[0]}, {volume.shape[1]}, {volume.shape[2]})")
     # Extract corresponding axial slices
     axial_slices_numbers = extract_axial_slices_from_sagittal_mask(volume, restored_mask, x_mid, save_images=False)
     print(f"[DEBUG] axial z indices (main) count={len(axial_slices_numbers)} "
@@ -294,7 +298,7 @@ def continue_after_l3(input_folder, output_folder):
     # 5. 全肌肉的识别
     run_nnunet_predict_and_overlay(slice_folder, full_mask_folder, full_model_dir, full_checkpoint)
     convert_binary_to_255(full_mask_folder, full_mask255_folder)
-    remove_small_full(full_mask_folder, full_cleaned_folder)
+    remove_small_full(full_mask_folder, full_cleaned_folder, full_removed_folder)
 
     roi_info_folder = os.path.join(tar_area_folder, "roi_info")
     for filename in os.listdir(slice_folder):
@@ -311,8 +315,10 @@ def continue_after_l3(input_folder, output_folder):
     filter_single_mask_folder(slice_folder, fat_mask_folder, roi_info_folder, fat_filtered_folder)
 
     # 6. 脂肪的SAT和VAT分离
-    batch_process_masks(full_filtered_folder, hulls_output_dir)    
-    batch_split_sat_vat(fat_filtered_folder, hulls_output_dir, sat_mask_folder, vat_mask_folder)
+    batch_process_outer_contours(full_filtered_folder, hulls_output_dir)
+    add_intersect_removed_to_filtered(hulls_output_dir, full_removed_folder, full_filtered_folder)
+    batch_process_outer_contours(full_filtered_folder, hulls_output_dir_new)
+    batch_split_sat_vat(fat_filtered_folder, hulls_output_dir_new, sat_mask_folder, vat_mask_folder)
 
     # 7 三维重建及体积计算
     # 体积是分开部分的体积

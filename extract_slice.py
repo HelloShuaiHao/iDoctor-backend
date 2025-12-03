@@ -37,7 +37,16 @@ def extract_axial_slices_from_sagittal_mask(volume, mask, x_idx, save_images=Fal
     print("DEBUG: type(mask):", type(mask))
     print("DEBUG: shape(mask):", getattr(mask, "shape", "No shape"))
 
+    # Get volume dimensions for bounds checking
+    volume_z_size = volume.shape[0]
+    print(f"DEBUG: volume z-size: {volume_z_size}, mask z-size: {mask.shape[0]}")
+
     for z in range(mask.shape[0]):  # loop over Z (slices)
+        # Bounds check: skip if z exceeds volume size
+        if z >= volume_z_size:
+            print(f"WARNING: Skipping z={z} (out of volume bounds, max={volume_z_size-1})")
+            break
+
         for y in range(mask.shape[1]):  # loop over Y (rows)
             if mask[z, y]:  # if mask is active
                 axial_slice = volume[z, :, :]
