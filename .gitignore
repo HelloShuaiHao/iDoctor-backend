@@ -7,6 +7,9 @@ data/
 test.zip
 outputnew/
 outputwhole/
+outputbone/
+outputmajor1000/
+outputwholearea/
 
 # Python
 __pycache__/

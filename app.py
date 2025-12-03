@@ -795,6 +795,30 @@ def get_output_image(request: Request, patient_name: str, study_date: str, folde
 
     return response
 
+@app.get("/list_output_folder/{patient_name}/{study_date}/{folder}")
+def list_output_folder(request: Request, patient_name: str, study_date: str, folder: str):
+    """列出指定输出文件夹中的所有文件"""
+    user_id = getattr(request.state, "user_id", None)
+    patient_root = _patient_root(patient_name, study_date, user_id)
+    folder_path = os.path.join(patient_root, "output", folder)
+
+    if not os.path.exists(folder_path):
+        return {"error": "文件夹不存在", "files": []}
+
+    if not os.path.isdir(folder_path):
+        return {"error": "路径不是文件夹", "files": []}
+
+    # 列出所有文件(不包含子目录)
+    try:
+        files = [
+            f for f in os.listdir(folder_path)
+            if os.path.isfile(os.path.join(folder_path, f))
+        ]
+        files.sort()  # 按文件名排序
+        return {"files": files}
+    except Exception as e:
+        return {"error": str(e), "files": []}
+
 @app.post("/generate_sagittal/{patient_name}/{study_date}")
 def api_generate_sagittal(request: Request, patient_name: str, study_date: str, force: int = Query(0)):
     # 获取用户ID（如果启用了认证）

@@ -27,6 +27,7 @@
       <div class="card-title">{{ $t("result.keyMetrics") }}</div>
 
       <div v-if="summary" class="summary">
+        <!-- 腰大肌指标 -->
         <div class="pill">
           <span class="k">{{ $t("fields.psoasHu") }}</span>
           <span class="v">{{ fmt(summary.psoas_hu_mean) }}</span>
@@ -35,6 +36,16 @@
           <span class="k">{{ $t("fields.psoasArea") }}</span>
           <span class="v">{{ fmt(summary.psoas_area_mm2) }}</span>
         </div>
+        <div class="pill" v-if="summary.major_volume_mm3 != null">
+          <span class="k">腰大肌体积</span>
+          <span class="v">{{ fmtVolume(summary.major_volume_mm3) }}</span>
+        </div>
+        <div class="pill" v-if="summary.mass_psoas_g != null">
+          <span class="k">腰大肌质量</span>
+          <span class="v">{{ fmt(summary.mass_psoas_g) }} g</span>
+        </div>
+
+        <!-- 全肌肉指标 -->
         <div class="pill">
           <span class="k">{{ $t("fields.comboHu") }}</span>
           <span class="v">{{ fmt(summary.combo_hu_mean) }}</span>
@@ -42,6 +53,32 @@
         <div class="pill">
           <span class="k">{{ $t("fields.comboArea") }}</span>
           <span class="v">{{ fmt(summary.combo_area_mm2) }}</span>
+        </div>
+        <div class="pill" v-if="summary.full_volume_mm3 != null">
+          <span class="k">全肌肉体积</span>
+          <span class="v">{{ fmtVolume(summary.full_volume_mm3) }}</span>
+        </div>
+        <div class="pill" v-if="summary.mass_combo_g != null">
+          <span class="k">全肌肉质量</span>
+          <span class="v">{{ fmt(summary.mass_combo_g) }} g</span>
+        </div>
+
+        <!-- 脂肪指标 -->
+        <div class="pill" v-if="summary.sat_hu_mean != null">
+          <span class="k">SAT HU值</span>
+          <span class="v">{{ fmt(summary.sat_hu_mean) }}</span>
+        </div>
+        <div class="pill" v-if="summary.sat_area_mm2 != null">
+          <span class="k">SAT 面积</span>
+          <span class="v">{{ fmt(summary.sat_area_mm2) }}</span>
+        </div>
+        <div class="pill" v-if="summary.vat_hu_mean != null">
+          <span class="k">VAT HU值</span>
+          <span class="v">{{ fmt(summary.vat_hu_mean) }}</span>
+        </div>
+        <div class="pill" v-if="summary.vat_area_mm2 != null">
+          <span class="k">VAT 面积</span>
+          <span class="v">{{ fmt(summary.vat_area_mm2) }}</span>
         </div>
       </div>
 
@@ -77,6 +114,30 @@
           :label="$t('fields.comboArea')"
           :formatter="fmtCell"
         />
+        <el-table-column
+          prop="sat_hu_mean"
+          label="SAT HU"
+          :formatter="fmtCell"
+          v-if="hasColumn('sat_hu_mean')"
+        />
+        <el-table-column
+          prop="sat_area_mm2"
+          label="SAT 面积"
+          :formatter="fmtCell"
+          v-if="hasColumn('sat_area_mm2')"
+        />
+        <el-table-column
+          prop="vat_hu_mean"
+          label="VAT HU"
+          :formatter="fmtCell"
+          v-if="hasColumn('vat_hu_mean')"
+        />
+        <el-table-column
+          prop="vat_area_mm2"
+          label="VAT 面积"
+          :formatter="fmtCell"
+          v-if="hasColumn('vat_area_mm2')"
+        />
       </el-table>
 
       <el-empty v-else :description="$t('result.emptyMetrics')" />
@@ -84,16 +145,37 @@
 
     <section class="card">
       <div class="card-title">{{ $t("result.keyImages") }}</div>
-      <div class="img-grid">
-        <div v-for="img in middle_images" :key="img" class="img-item">
-          <el-image
-            :src="imageUrl(img)"
-            fit="cover"
-            :preview-src-list="previewList"
-          />
-          <div class="caption">{{ img }}</div>
+
+      <!-- 综合覆盖图(包含肌肉+脂肪) -->
+      <div v-if="allOverlayImages.length" style="margin-bottom: 20px;">
+        <h4 style="font-size: 14px; color: #666; margin-bottom: 8px;">综合覆盖图 (肌肉 + 脂肪)</h4>
+        <div class="img-grid">
+          <div v-for="img in allOverlayImages" :key="img" class="img-item">
+            <el-image
+              :src="getL3ImageUrl(patient, date, 'all_overlay', img)"
+              fit="cover"
+              :preview-src-list="allOverlayPreviewList"
+            />
+            <div class="caption">{{ img }}</div>
+          </div>
         </div>
       </div>
+
+      <!-- 原有肌肉覆盖图 -->
+      <div v-if="middle_images.length">
+        <h4 style="font-size: 14px; color: #666; margin-bottom: 8px;">肌肉覆盖图</h4>
+        <div class="img-grid">
+          <div v-for="img in middle_images" :key="img" class="img-item">
+            <el-image
+              :src="imageUrl(img)"
+              fit="cover"
+              :preview-src-list="previewList"
+            />
+            <div class="caption">{{ img }}</div>
+          </div>
+        </div>
+      </div>
+
       <div class="mid-ops" v-if="axisalMainName">
         <el-button
           size="mini"
@@ -171,6 +253,7 @@ import {
 } from "@/api";
 import L3MaskEditor from "./L3MaskEditor.vue";
 import MiddleMaskEditor from "./MiddleMaskEditor.vue";
+import axios from 'axios';
 
 export default {
   name: "ResultDetail",
@@ -180,9 +263,11 @@ export default {
       loading: true,
       csv_files: {},
       middle_images: [],
+      allOverlayImages: [], // 综合覆盖图(肌肉+脂肪)
       rows: [],
       summary: null,
       previewList: [],
+      allOverlayPreviewList: [],
       l3Detecting: false,
       l3Continuing: false,
       l3ImageUrl: "",
@@ -222,6 +307,10 @@ export default {
         this.csv_files = data.csv_files || {};
         this.middle_images = data.middle_images || [];
         this.previewList = this.middle_images.map((n) => this.imageUrl(n));
+
+        // 加载综合覆盖图(肌肉+脂肪)
+        await this.loadAllOverlayImages();
+
         const keys = Object.keys(this.csv_files || {});
         const csvName = keys.find((n) => /middle[_-]?only/i.test(n)) || keys[0];
         if (csvName) {
@@ -246,6 +335,28 @@ export default {
         this.$message.error(this.$t("messages.fetchFail"));
       } finally {
         this.loading = false;
+      }
+    },
+    async loadAllOverlayImages() {
+      try {
+        const BASE_URL = process.env.VUE_APP_BASE_URL || "http://localhost:4200";
+        const token = localStorage.getItem('access_token');
+        const params = new URLSearchParams();
+        params.append('t', Date.now());
+        if (token) {
+          params.append('token', token);
+        }
+        const url = `${BASE_URL}/list_output_folder/${encodeURIComponent(this.patient)}/${this.date}/all_overlay?${params.toString()}`;
+        const res = await axios.get(url);
+        if (res.data && res.data.files) {
+          this.allOverlayImages = res.data.files.filter(f => f.endsWith('.png'));
+          this.allOverlayPreviewList = this.allOverlayImages.map(img =>
+            getL3ImageUrl(this.patient, this.date, 'all_overlay', img)
+          );
+        }
+      } catch (e) {
+        // all_overlay 可能不存在,静默处理
+        this.allOverlayImages = [];
       }
     },
     openMiddleEditor() {
@@ -279,6 +390,14 @@ export default {
         psoas_area_mm2: "psoas_area_mm2",
         combo_hu_mean: "combo_hu_mean",
         combo_area_mm2: "combo_area_mm2",
+        sat_hu_mean: "sat_hu_mean",
+        sat_area_mm2: "sat_area_mm2",
+        vat_hu_mean: "vat_hu_mean",
+        vat_area_mm2: "vat_area_mm2",
+        major_volume_mm3: "major_volume_mm3",
+        full_volume_mm3: "full_volume_mm3",
+        mass_psoas_g: "mass_psoas_g",
+        mass_combo_g: "mass_combo_g",
       };
       const col = {};
       for (const k in keyCols) col[k] = idx(keyCols[k]);
@@ -294,6 +413,14 @@ export default {
             psoas_area_mm2: num(get(col.psoas_area_mm2)),
             combo_hu_mean: num(get(col.combo_hu_mean)),
             combo_area_mm2: num(get(col.combo_area_mm2)),
+            sat_hu_mean: num(get(col.sat_hu_mean)),
+            sat_area_mm2: num(get(col.sat_area_mm2)),
+            vat_hu_mean: num(get(col.vat_hu_mean)),
+            vat_area_mm2: num(get(col.vat_area_mm2)),
+            major_volume_mm3: num(get(col.major_volume_mm3)),
+            full_volume_mm3: num(get(col.full_volume_mm3)),
+            mass_psoas_g: num(get(col.mass_psoas_g)),
+            mass_combo_g: num(get(col.mass_combo_g)),
           };
         })
         .filter((r) => r.filename);
@@ -305,8 +432,14 @@ export default {
         "psoas_area_mm2",
         "combo_hu_mean",
         "combo_area_mm2",
+        "sat_hu_mean",
+        "sat_area_mm2",
+        "vat_hu_mean",
+        "vat_area_mm2",
       ];
       const s = {};
+
+      // 计算平均值
       for (const k of keys) {
         const vals = rows
           .map((r) => r[k])
@@ -315,10 +448,30 @@ export default {
           ? vals.reduce((a, b) => a + b, 0) / vals.length
           : null;
       }
+
+      // 体积和质量数据(所有行都相同,取第一行)
+      if (rows[0]) {
+        s.major_volume_mm3 = rows[0].major_volume_mm3;
+        s.full_volume_mm3 = rows[0].full_volume_mm3;
+        s.mass_psoas_g = rows[0].mass_psoas_g;
+        s.mass_combo_g = rows[0].mass_combo_g;
+      }
+
       return s;
+    },
+    hasColumn(colName) {
+      return this.rows.length > 0 && this.rows[0][colName] != null;
+    },
+    fmtVolume(mm3) {
+      if (mm3 == null || Number.isNaN(mm3)) return '-';
+      const ml = mm3 / 1000;
+      return `${mm3.toFixed(0)} mm³ (${ml.toFixed(2)} mL)`;
     },
     imageUrl(filename) {
       return getImageUrl(this.patient, this.date, filename);
+    },
+    getL3ImageUrl(patient, date, folder, filename) {
+      return getL3ImageUrl(patient, date, folder, filename);
     },
     fmt(n) {
       return n == null || Number.isNaN(n) ? "-" : Number(n).toFixed(2);
