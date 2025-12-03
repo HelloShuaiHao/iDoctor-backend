@@ -1,5 +1,6 @@
 <template>
-  <div class="model-3d-viewer">
+  <div class="model-3d-viewer" style="border: 5px solid green; background: white; padding: 20px; min-height: 200px;">
+    <h1 style="color: green; font-size: 24px; font-weight: bold;">✅ Model3DViewer 组件已加载！</h1>
     <div class="viewer-header">
       <h3>3D模型可视化</h3>
       <div class="viewer-controls">
