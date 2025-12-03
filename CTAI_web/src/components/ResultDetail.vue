@@ -221,6 +221,15 @@
           >
             {{ reconstructing3D ? '重建中...' : '重建3D模型' }}
           </el-button>
+          <!-- 临时调试按钮 -->
+          <el-button
+            size="mini"
+            type="danger"
+            @click="debugToggle3DViewer"
+            style="margin-left: 10px;"
+          >
+            调试: {{ show3DViewer ? '隐藏' : '显示' }}
+          </el-button>
         </div>
       </div>
 
@@ -814,6 +823,17 @@ export default {
           show3DViewer: this.show3DViewer,
           reconstructing3D: this.reconstructing3D
         });
+
+        // 强制 Vue 更新 DOM
+        await this.$nextTick();
+        console.log('[3D检查] $nextTick 完成，强制刷新...');
+        this.$forceUpdate();
+        console.log('[3D检查] 强制刷新完成');
+
+        // 验证组件是否已挂载
+        await this.$nextTick();
+        const viewer = this.$el.querySelector('.model-3d-viewer');
+        console.log('[3D检查] 查找 3D 查看器 DOM 元素:', viewer ? '✅ 找到' : '❌ 未找到');
       } catch (error) {
         console.error('[3D检查] ❌ 检查3D模型失败:', error);
         this.show3DViewer = false;
@@ -881,6 +901,20 @@ export default {
           this.reconstructing3D = false;
         }
       }, 3000); // 3秒轮询一次
+    },
+    debugToggle3DViewer() {
+      console.log('[调试] 切换前 show3DViewer:', this.show3DViewer);
+      console.log('[调试] 切换前 reconstructing3D:', this.reconstructing3D);
+      this.show3DViewer = !this.show3DViewer;
+      this.reconstructing3D = false; // 确保不是重建状态
+      console.log('[调试] 切换后 show3DViewer:', this.show3DViewer);
+      this.$nextTick(() => {
+        console.log('[调试] nextTick 后检查 DOM...');
+        const viewer = this.$el.querySelector('.model-3d-viewer');
+        const viewerContainer = this.$el.querySelector('.viewer-container');
+        console.log('[调试] .model-3d-viewer:', viewer ? '✅ 存在' : '❌ 不存在');
+        console.log('[调试] .viewer-container:', viewerContainer ? '✅ 存在' : '❌ 不存在');
+      });
     },
   },
 };
