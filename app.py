@@ -1046,6 +1046,247 @@ async def sam2_health():
 
 # ==================== SAM2 分割端点结束 ====================
 
+# ==================== 3D重建端点开始 ====================
+
+from recon import reconstruct_ct_volume
+from fastapi.responses import FileResponse
+import pydicom
+
+@app.post("/reconstruct_3d/{patient_name}/{study_date}")
+async def reconstruct_3d(
+    patient_name: str,
+    study_date: str,
+    background_tasks: BackgroundTasks,
+    mask_type: str = Form("psoas")  # psoas, muscle, vertebra
+):
+    """
+    触发3D重建任务
+
+    参数:
+        patient_name: 患者名称
+        study_date: 研究日期
+        mask_type: 掩码类型 (psoas, muscle, vertebra)
+
+    返回:
+        task_id: 异步任务ID
+    """
+    logger.info(f"收到3D重建请求: {patient_name}/{study_date}, mask_type={mask_type}")
+
+    # 检查病例目录是否存在
+    patient_date_dir = os.path.join("./output", patient_name, study_date)
+    if not os.path.exists(patient_date_dir):
+        raise HTTPException(status_code=404, detail="病例不存在")
+
+    # 创建任务
+    task_id = f"3d_recon_{patient_name}_{study_date}_{mask_type}_{int(time.time())}"
+
+    # 添加到任务管理器
+    task_manager = get_task_manager()
+    task_manager.create_task(
+        task_id=task_id,
+        patient_name=patient_name,
+        study_date=study_date,
+        task_type="3d_reconstruction"
+    )
+
+    # 在后台执行重建
+    background_tasks.add_task(
+        run_3d_reconstruction,
+        task_id, patient_name, study_date, mask_type
+    )
+
+    return {
+        "task_id": task_id,
+        "message": "3D重建任务已提交",
+        "patient_name": patient_name,
+        "study_date": study_date,
+        "mask_type": mask_type
+    }
+
+def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask_type: str):
+    """
+    执行3D重建的后台任务
+    """
+    task_manager = get_task_manager()
+
+    try:
+        logger.info(f"开始3D重建任务: {task_id}")
+        task_manager.update_task(task_id, "processing", 10, "准备掩码数据...")
+
+        # 确定掩码目录
+        patient_date_dir = os.path.join("./output", patient_name, study_date)
+
+        # 根据类型选择掩码目录
+        if mask_type == "psoas":
+            mask_dir = os.path.join(patient_date_dir, "major_mask")
+        elif mask_type == "muscle":
+            mask_dir = os.path.join(patient_date_dir, "full_mask")
+        elif mask_type == "vertebra":
+            # 椎骨掩码可能在不同位置
+            mask_dir = os.path.join(patient_date_dir, "vertebra_mask")
+        else:
+            raise ValueError(f"不支持的掩码类型: {mask_type}")
+
+        if not os.path.exists(mask_dir):
+            raise FileNotFoundError(f"掩码目录不存在: {mask_dir}")
+
+        task_manager.update_task(task_id, "processing", 30, "读取DICOM spacing信息...")
+
+        # 读取DICOM spacing
+        dicom_dir = os.path.join(patient_date_dir, "dicom")
+        spacing = (1.0, 1.0, 1.0)  # 默认值
+
+        if os.path.exists(dicom_dir):
+            try:
+                dicom_files = [f for f in os.listdir(dicom_dir) if f.endswith('.dcm')]
+                if dicom_files:
+                    ds = pydicom.dcmread(os.path.join(dicom_dir, dicom_files[0]))
+                    pixel_spacing = ds.PixelSpacing if hasattr(ds, 'PixelSpacing') else [1.0, 1.0]
+                    slice_thickness = ds.SliceThickness if hasattr(ds, 'SliceThickness') else 1.0
+                    spacing = (float(pixel_spacing[0]), float(pixel_spacing[1]), float(slice_thickness))
+                    logger.info(f"从DICOM读取spacing: {spacing}")
+            except Exception as e:
+                logger.warning(f"无法读取DICOM spacing: {e}，使用默认值")
+
+        task_manager.update_task(task_id, "processing", 50, "执行3D重建...")
+
+        # 创建输出目录
+        output_dir = os.path.join(patient_date_dir, "3d_models")
+        os.makedirs(output_dir, exist_ok=True)
+
+        # 执行重建
+        result = reconstruct_ct_volume(
+            mask_dir=mask_dir,
+            output_dir=output_dir,
+            spacing=spacing,
+            visualize=False,
+            format='stl',
+            model_name=f"{mask_type}_3d"
+        )
+
+        task_manager.update_task(task_id, "processing", 90, "保存重建结果...")
+
+        # 保存重建信息到JSON
+        info_file = os.path.join(output_dir, f"{mask_type}_3d_info.json")
+        with open(info_file, 'w', encoding='utf-8') as f:
+            json.dump({
+                'mask_type': mask_type,
+                'volume_mm3': result['volume_mm3'],
+                'volume_ml': result['volume_ml'],
+                'voxel_count': result['voxel_count'],
+                'spacing': result['spacing'],
+                'model_filename': os.path.basename(result['model_path']),
+                'created_at': time.strftime('%Y-%m-%d %H:%M:%S')
+            }, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"3D重建完成: {result}")
+
+        task_manager.update_task(
+            task_id,
+            "completed",
+            100,
+            "3D重建完成",
+            result={
+                'model_path': result['model_path'],
+                'volume_mm3': result['volume_mm3'],
+                'volume_ml': result['volume_ml']
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"3D重建失败: {e}", exc_info=True)
+        task_manager.update_task(
+            task_id,
+            "failed",
+            0,
+            f"3D重建失败: {str(e)}"
+        )
+
+@app.get("/get_3d_model/{patient_name}/{study_date}/{filename}")
+async def get_3d_model(patient_name: str, study_date: str, filename: str):
+    """
+    获取3D模型文件 (STL/OBJ格式)
+    """
+    # 安全检查文件名
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="非法的文件名")
+
+    # 构建文件路径
+    model_dir = os.path.join("./output", patient_name, study_date, "3d_models")
+    file_path = os.path.join(model_dir, filename)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="3D模型文件不存在")
+
+    # 确定 MIME 类型
+    if filename.lower().endswith('.stl'):
+        media_type = "application/octet-stream"
+    elif filename.lower().endswith('.obj'):
+        media_type = "text/plain"
+    else:
+        media_type = "application/octet-stream"
+
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        filename=filename
+    )
+
+@app.get("/check_3d_models/{patient_name}/{study_date}")
+async def check_3d_models(patient_name: str, study_date: str):
+    """
+    检查病例可用的3D模型
+
+    返回:
+        {
+            "available": bool,
+            "models": [
+                {
+                    "type": "psoas",
+                    "filename": "psoas_3d.stl",
+                    "volume_mm3": 12345.67,
+                    "volume_ml": 12.35,
+                    "created_at": "2025-12-03 10:00:00"
+                }
+            ]
+        }
+    """
+    model_dir = os.path.join("./output", patient_name, study_date, "3d_models")
+
+    if not os.path.exists(model_dir):
+        return {"available": False, "models": []}
+
+    models = []
+
+    # 查找所有STL和OBJ文件
+    for filename in os.listdir(model_dir):
+        if filename.endswith(('.stl', '.obj')):
+            # 尝试读取对应的info文件
+            info_file = filename.replace('.stl', '_info.json').replace('.obj', '_info.json')
+            info_path = os.path.join(model_dir, info_file)
+
+            model_info = {
+                "filename": filename,
+                "type": "unknown"
+            }
+
+            if os.path.exists(info_path):
+                try:
+                    with open(info_path, 'r', encoding='utf-8') as f:
+                        info = json.load(f)
+                        model_info.update(info)
+                except Exception as e:
+                    logger.warning(f"无法读取模型信息文件: {e}")
+
+            models.append(model_info)
+
+    return {
+        "available": len(models) > 0,
+        "models": models
+    }
+
+# ==================== 3D重建端点结束 ====================
+
 def safe_clear_folder(folder, patterns):
     if not os.path.isdir(folder):
         return

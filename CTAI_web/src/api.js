@@ -325,4 +325,64 @@ export async function checkSam2Health() {
 
 // ==================== SAM2 分割 API 结束 ====================
 
+// ==================== 3D 模型 API ====================
+
+/**
+ * 触发3D重建
+ * @param {string} patient - 患者ID
+ * @param {string} date - 日期
+ * @param {string} maskType - 掩码类型 (psoas, muscle, vertebra)
+ * @returns {Promise<Object>} - 返回任务信息
+ */
+export async function reconstruct3D(patient, date, maskType = 'psoas') {
+  try {
+    const formData = new FormData();
+    formData.append('mask_type', maskType);
+
+    const response = await axios.post(
+      `${BASE_URL}/reconstruct_3d/${encodeURIComponent(patient)}/${date}`,
+      formData
+    );
+    return response.data;
+  } catch (error) {
+    console.error('3D重建请求失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 获取3D模型文件
+ * @param {string} patient - 患者ID
+ * @param {string} date - 日期
+ * @param {string} filename - 模型文件名 (如: psoas_3d.stl, muscle_3d.stl)
+ * @returns {string} - 3D模型文件的URL
+ */
+export function get3DModelUrl(patient, date, filename) {
+  const token = localStorage.getItem('access_token');
+  const params = new URLSearchParams();
+  params.append('t', Date.now()); // 缓存破坏
+  if (token) {
+    params.append('token', token);
+  }
+  return `${BASE_URL}/get_3d_model/${encodeURIComponent(patient)}/${date}/${filename}?${params.toString()}`;
+}
+
+/**
+ * 检查3D模型是否存在
+ * @param {string} patient - 患者ID
+ * @param {string} date - 日期
+ * @returns {Promise<Object>} - 返回可用的3D模型列表
+ */
+export async function check3DModels(patient, date) {
+  try {
+    const response = await axios.get(`${BASE_URL}/check_3d_models/${encodeURIComponent(patient)}/${date}`);
+    return response.data;
+  } catch (error) {
+    console.error('检查3D模型失败:', error);
+    return { available: false, models: [] };
+  }
+}
+
+// ==================== 3D 模型 API 结束 ====================
+
 export { BASE_URL }

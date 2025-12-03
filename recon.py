@@ -63,25 +63,47 @@ class CT3DReconstructor:
     
         return mesh
 
-    def create_target_mesh(self, level=0.5, hole_size=300.0):
-        """只创建目标区域网格"""
+    def create_target_mesh(self, level=0.5, hole_size=300.0, format='stl'):
+        """
+        只创建目标区域网格
+
+        参数:
+            level: Marching Cubes 阈值
+            hole_size: 孔洞填充大小
+            format: 输出格式 ('stl' 或 'obj')
+
+        返回:
+            str: 保存的文件路径
+        """
         print("正在创建目标区域3D网格...")
         self.target_mesh = self._create_mesh_from_mask(
             self.target_mask,
             level=level,
             hole_size=hole_size
         )
-        self._save_mesh(self.target_mesh, "target_mesh.obj")
+        filename = f"target_mesh.{format.lower()}"
+        filepath = self._save_mesh(self.target_mesh, filename)
         print("✅ 目标区域网格创建完成！")
+        return filepath
 
     def _save_mesh(self, mesh, filename):
-        """保存mesh为OBJ文件"""
+        """保存mesh为OBJ/STL文件"""
         import vtk, os
-        writer = vtk.vtkOBJWriter()
-        writer.SetFileName(os.path.join(self.output_dir, filename))
+        filepath = os.path.join(self.output_dir, filename)
+
+        # 根据文件扩展名选择不同的writer
+        if filename.lower().endswith('.stl'):
+            writer = vtk.vtkSTLWriter()
+        elif filename.lower().endswith('.obj'):
+            writer = vtk.vtkOBJWriter()
+        else:
+            raise ValueError(f"不支持的文件格式: {filename}，仅支持 .obj 和 .stl")
+
+        writer.SetFileName(filepath)
         writer.SetInputData(mesh)
         writer.Write()
         print(f"💾 已保存: {filename}")
+        return filepath
 
     def compute_volume(self):
         """
@@ -169,7 +191,7 @@ class CT3DReconstructor:
 #     main()
 
 # reconstruct_ct_volume
-def reconstruct_ct_volume(mask_dir, output_dir, spacing, visualize=False):
+def reconstruct_ct_volume(mask_dir, output_dir, spacing, visualize=False, format='stl', model_name='target_mesh'):
     """
     对目标区域的二值掩码进行三维重建并计算体积
 
@@ -177,15 +199,24 @@ def reconstruct_ct_volume(mask_dir, output_dir, spacing, visualize=False):
         mask_dir : str
             存放二值掩码 (0/1或0/255) 的文件夹路径，每个切片一张png图。
         output_dir : str
-            输出结果保存路径（包含OBJ文件与日志）。
+            输出结果保存路径（包含OBJ/STL文件与日志）。
         spacing : tuple(float)
             (dx, dy, dz)，即体素间距，单位为毫米(mm)。
         visualize : bool
             是否在重建完成后进行3D可视化（默认False）。
-    
+        format : str
+            输出格式 ('stl' 或 'obj')，默认 'stl'
+        model_name : str
+            模型文件名（不含扩展名），默认 'target_mesh'
+
     返回:
-        volume_info : dict
-            体积计算结果（包含体素数与体积mm³/mL）。
+        dict : 包含体积信息和模型路径
+            {
+                'volume_mm3': float,
+                'volume_ml': float,
+                'model_path': str,
+                'voxel_count': int
+            }
     """
     # 1️⃣ 检查输入目录
     if not os.path.exists(mask_dir):
@@ -217,17 +248,26 @@ def reconstruct_ct_volume(mask_dir, output_dir, spacing, visualize=False):
     )
 
     # 4️⃣ 生成3D网格
-    reconstructor.create_target_mesh(level=0.5, hole_size=300.0)
+    model_path = reconstructor.create_target_mesh(level=0.5, hole_size=300.0, format=format)
 
     # 5️⃣ 计算体积
     volume_mm3 = reconstructor.compute_volume()
-    print(f"📏 Volume info: {volume_mm3}")
+    volume_ml = volume_mm3 / 1000.0
+    voxel_count = int((mask_volume > 0).sum())
+
+    print(f"📏 Volume info: {volume_mm3} mm³ = {volume_ml} mL")
 
     # 6️⃣ 可选：3D可视化
     if visualize:
         reconstructor.visualize_target()
 
-    return volume_mm3
+    return {
+        'volume_mm3': float(volume_mm3),
+        'volume_ml': float(volume_ml),
+        'model_path': model_path,
+        'voxel_count': voxel_count,
+        'spacing': spacing
+    }
 
 # if __name__ == "__main__":
 #     mask_dir = "recon_19392963/full_255mask"  # 存放二值mask的文件夹

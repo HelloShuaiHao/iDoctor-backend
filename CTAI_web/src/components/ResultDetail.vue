@@ -197,6 +197,60 @@
       </div>
     </section>
 
+    <!-- 3D可视化 -->
+    <section class="card">
+      <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+        <span>3D模型可视化</span>
+        <div>
+          <el-select
+            v-model="selectedMaskType"
+            size="mini"
+            placeholder="选择类型"
+            style="width: 120px; margin-right: 10px;"
+            @change="check3DModelsAvailability"
+          >
+            <el-option label="腰大肌" value="psoas" />
+            <el-option label="全肌肉" value="muscle" />
+          </el-select>
+          <el-button
+            size="mini"
+            type="primary"
+            :loading="reconstructing3D"
+            @click="trigger3DReconstruction"
+            icon="el-icon-refresh"
+          >
+            {{ reconstructing3D ? '重建中...' : '重建3D模型' }}
+          </el-button>
+        </div>
+      </div>
+
+      <!-- 进度条 -->
+      <div v-if="reconstructing3D" style="margin: 16px 0">
+        <el-progress
+          :percentage="reconstruction3DProgress"
+          :status="reconstruction3DProgress === 100 ? 'success' : undefined"
+        />
+        <p style="font-size: 12px; color: #666; margin-top: 8px">
+          {{ reconstruction3DMessage }}
+        </p>
+      </div>
+
+      <!-- 提示信息 -->
+      <div v-if="!show3DViewer && !reconstructing3D" style="padding: 20px; text-align: center; color: #999;">
+        <i class="el-icon-info" style="font-size: 48px; margin-bottom: 10px;"></i>
+        <p>暂无3D模型，请点击"重建3D模型"按钮生成</p>
+      </div>
+
+      <!-- 3D查看器 -->
+      <model-3d-viewer
+        v-if="show3DViewer && !reconstructing3D"
+        :patient="patient"
+        :date="date"
+        :selected-mask-type="selectedMaskType"
+        :key="`3d-viewer-${selectedMaskType}-${modelRefreshKey}`"
+      />
+    </section>
+
     <section class="card" style="margin-bottom: 18px">
       <div class="card-title">{{ $t("result.l3Ops") }}</div>
       <el-button type="primary" :loading="l3Detecting" @click="handleL3Detect">
@@ -264,14 +318,17 @@ import {
   continueAfterL3,
   getL3ImageUrl,
   getTaskStatus,
+  check3DModels,
+  reconstruct3D,
 } from "@/api";
 import L3MaskEditor from "./L3MaskEditor.vue";
 import MiddleMaskEditor from "./MiddleMaskEditor.vue";
+import Model3DViewer from "./Model3DViewer.vue";
 import axios from 'axios';
 
 export default {
   name: "ResultDetail",
-  components: { L3MaskEditor, MiddleMaskEditor },
+  components: { L3MaskEditor, MiddleMaskEditor, Model3DViewer },
     data() {
     return {
       loading: true,
@@ -296,12 +353,23 @@ export default {
       l3ProgressMessage: "",
       l3ImageUrlIndex: 0, // 当前尝试的L3图片路径索引
       l3PossibleUrls: [], // 所有可能的L3图片路径
+      show3DViewer: false, // 是否显示3D可视化
+      selectedMaskType: 'psoas', // 选择的掩码类型
+      reconstructing3D: false, // 是否正在重建3D
+      reconstruction3DProgress: 0, // 3D重建进度
+      reconstruction3DMessage: '', // 3D重建消息
+      reconstruction3DTaskId: null, // 3D重建任务ID
+      reconstruction3DTimer: null, // 3D重建轮询定时器
+      modelRefreshKey: 0, // 用于强制刷新3D模型组件
     };
   },
   beforeDestroy() {
     // 组件销毁时清除定时器
     if (this.l3PollTimer) {
       clearInterval(this.l3PollTimer);
+    }
+    if (this.reconstruction3DTimer) {
+      clearInterval(this.reconstruction3DTimer);
     }
   },
   computed: {
@@ -320,6 +388,8 @@ export default {
   },
   async created() {
     await this.fetchResults();
+    // 检查是否有3D模型可用
+    this.check3DModelsAvailability();
   },
   methods: {
     async fetchResults() {
@@ -696,6 +766,106 @@ export default {
     versionedL3Url(folder, filename) {
       // L3 图片需要缓存破坏，因为会被更新
       return getL3ImageUrl(this.patient, this.date, folder, filename, true);
+    },
+    async check3DModelsAvailability() {
+      try {
+        console.log('[3D检查] 开始检查3D模型可用性...', {
+          patient: this.patient,
+          date: this.date,
+          selectedMaskType: this.selectedMaskType
+        });
+
+        const result = await check3DModels(this.patient, this.date);
+        console.log('[3D检查] API返回结果:', result);
+
+        if (result.available && result.models && result.models.length > 0) {
+          console.log('[3D检查] 找到模型:', result.models);
+
+          // 检查是否有当前选择类型的模型
+          const hasSelectedType = result.models.some(m => m.mask_type === this.selectedMaskType);
+          console.log('[3D检查] 是否有选中类型的模型:', hasSelectedType, 'selectedMaskType:', this.selectedMaskType);
+
+          this.show3DViewer = hasSelectedType;
+
+          if (hasSelectedType) {
+            // 找到对应模型的体积信息
+            const model = result.models.find(m => m.mask_type === this.selectedMaskType);
+            if (model && model.volume_mm3) {
+              // 可以在这里更新summary中的体积信息
+              console.log(`[3D检查] ${this.selectedMaskType} 体积: ${model.volume_mm3} mm³`);
+            }
+          }
+        } else {
+          console.log('[3D检查] 没有可用的3D模型');
+          this.show3DViewer = false;
+        }
+      } catch (error) {
+        console.error('[3D检查] 检查3D模型失败:', error);
+        this.show3DViewer = false;
+      }
+    },
+    async trigger3DReconstruction() {
+      this.reconstructing3D = true;
+      this.reconstruction3DProgress = 0;
+      this.reconstruction3DMessage = '正在提交3D重建任务...';
+
+      try {
+        const result = await reconstruct3D(this.patient, this.date, this.selectedMaskType);
+
+        if (result.task_id) {
+          this.reconstruction3DTaskId = result.task_id;
+          this.$message.success(result.message || '3D重建任务已提交');
+
+          // 开始轮询任务状态
+          this.start3DReconstructionPolling();
+        } else {
+          // 同步完成（不太可能）
+          this.$message.success('3D重建完成');
+          this.reconstructing3D = false;
+          await this.check3DModelsAvailability();
+          this.modelRefreshKey++; // 强制刷新3D查看器
+        }
+      } catch (error) {
+        console.error('3D重建失败:', error);
+        const errorMsg = error.response?.data?.detail || error.message || '3D重建失败';
+        this.$message.error(errorMsg);
+        this.reconstructing3D = false;
+      }
+    },
+    start3DReconstructionPolling() {
+      // 每3秒查询一次任务状态
+      this.reconstruction3DTimer = setInterval(async () => {
+        try {
+          const res = await getTaskStatus(this.reconstruction3DTaskId);
+          const status = res.data;
+
+          this.reconstruction3DProgress = status.progress || 0;
+          this.reconstruction3DMessage = status.message || '';
+
+          if (status.status === 'completed') {
+            // 任务完成
+            clearInterval(this.reconstruction3DTimer);
+            const duration = status.duration ? `耗时 ${Math.round(status.duration)}秒` : '';
+            this.$message.success(`3D重建完成 ${duration}`);
+
+            // 刷新3D模型列表
+            await this.check3DModelsAvailability();
+            this.modelRefreshKey++; // 强制刷新3D查看器
+            this.reconstructing3D = false;
+          } else if (status.status === 'failed') {
+            // 任务失败
+            clearInterval(this.reconstruction3DTimer);
+            const errMsg = status.error ? `: ${status.error}` : '';
+            this.$message.error(`3D重建失败${errMsg}`);
+            this.reconstructing3D = false;
+          }
+          // status === "processing" 时继续轮询
+        } catch (e) {
+          clearInterval(this.reconstruction3DTimer);
+          this.$message.error('查询3D重建状态失败');
+          this.reconstructing3D = false;
+        }
+      }, 3000); // 3秒轮询一次
     },
   },
 };

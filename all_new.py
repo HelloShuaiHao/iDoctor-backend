@@ -144,9 +144,12 @@ def main(input_folder, output_folder):
 
     # 7 三维重建及体积计算
     # 体积是分开部分的体积
-    major_volume_mm3 = reconstruct_ct_volume(major_filtered_folder, major_recon_folder, spacing, visualize=False)
-    full_volume_mm3 = reconstruct_ct_volume(full_filtered_folder, full_recon_folder, spacing, visualize=False)
+    major_volume_result = reconstruct_ct_volume(major_filtered_folder, major_recon_folder, spacing, visualize=False)
+    full_volume_result = reconstruct_ct_volume(full_filtered_folder, full_recon_folder, spacing, visualize=False)
 
+    # Extract numeric volume values from the result dictionaries
+    major_volume_mm3 = major_volume_result['volume_mm3']
+    full_volume_mm3 = full_volume_result['volume_mm3']
     combo_volume_mm3 = major_volume_mm3 + full_volume_mm3
 
     # 6 全肌肉 + 腰大肌一起计算
@@ -343,9 +346,12 @@ def continue_after_l3(input_folder, output_folder):
 
     # 7 三维重建及体积计算
     # 体积是分开部分的体积
-    major_volume_mm3 = reconstruct_ct_volume(major_filtered_folder, major_recon_folder, spacing, visualize=False)
-    full_volume_mm3 = reconstruct_ct_volume(full_filtered_folder, full_recon_folder, spacing, visualize=False)
+    major_volume_result = reconstruct_ct_volume(major_filtered_folder, major_recon_folder, spacing, visualize=False)
+    full_volume_result = reconstruct_ct_volume(full_filtered_folder, full_recon_folder, spacing, visualize=False)
 
+    # Extract numeric volume values from the result dictionaries
+    major_volume_mm3 = major_volume_result['volume_mm3']
+    full_volume_mm3 = full_volume_result['volume_mm3']
     combo_volume_mm3 = major_volume_mm3 + full_volume_mm3
 
     # 6 全肌肉 + 腰大肌一起计算
