@@ -1086,14 +1086,16 @@ async def reconstruct_3d(
     # 创建任务
     task_id = f"3d_recon_{patient_name}_{study_date}_{mask_type}_{int(time.time())}"
 
-    # 添加到任务管理器
-    task_manager = get_task_manager()
-    task_manager.create_task(
-        task_id=task_id,
-        patient_name=patient_name,
-        study_date=study_date,
-        task_type="3d_reconstruction"
-    )
+    # 初始化任务状态
+    task_status[task_id] = {
+        "status": "processing",
+        "progress": 0,
+        "message": "3D重建任务已提交",
+        "started_at": time.time(),
+        "patient_name": patient_name,
+        "study_date": study_date,
+        "mask_type": mask_type
+    }
 
     # 在后台执行重建
     background_tasks.add_task(
@@ -1113,11 +1115,12 @@ def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask
     """
     执行3D重建的后台任务
     """
-    task_manager = get_task_manager()
+    start_time = time.time()
 
     try:
         logger.info(f"开始3D重建任务: {task_id}")
-        task_manager.update_task(task_id, "processing", 10, "准备掩码数据...")
+        task_status[task_id]["progress"] = 10
+        task_status[task_id]["message"] = "准备掩码数据..."
 
         # 获取病例根目录和输出目录
         patient_root = _patient_root(patient_name, study_date, user_id)
@@ -1137,7 +1140,8 @@ def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask
         if not os.path.exists(mask_dir):
             raise FileNotFoundError(f"掩码目录不存在: {mask_dir}")
 
-        task_manager.update_task(task_id, "processing", 30, "读取DICOM spacing信息...")
+        task_status[task_id]["progress"] = 30
+        task_status[task_id]["message"] = "读取DICOM spacing信息..."
 
         # 读取DICOM spacing
         dicom_dir = os.path.join(output_folder, "dicom")
@@ -1155,7 +1159,8 @@ def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask
             except Exception as e:
                 logger.warning(f"无法读取DICOM spacing: {e}，使用默认值")
 
-        task_manager.update_task(task_id, "processing", 50, "执行3D重建...")
+        task_status[task_id]["progress"] = 50
+        task_status[task_id]["message"] = "执行3D重建..."
 
         # 创建3D模型输出目录
         model_output_dir = os.path.join(output_folder, "3d_models")
@@ -1171,7 +1176,8 @@ def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask
             model_name=f"{mask_type}_3d"
         )
 
-        task_manager.update_task(task_id, "processing", 90, "保存重建结果...")
+        task_status[task_id]["progress"] = 90
+        task_status[task_id]["message"] = "保存重建结果..."
 
         # 保存重建信息到JSON
         info_file = os.path.join(model_output_dir, f"{mask_type}_3d_info.json")
@@ -1188,26 +1194,34 @@ def run_3d_reconstruction(task_id: str, patient_name: str, study_date: str, mask
 
         logger.info(f"3D重建完成: {result}")
 
-        task_manager.update_task(
-            task_id,
-            "completed",
-            100,
-            "3D重建完成",
-            result={
+        elapsed = time.time() - start_time
+
+        task_status[task_id] = {
+            "status": "completed",
+            "progress": 100,
+            "message": "3D重建完成",
+            "started_at": task_status[task_id].get("started_at"),
+            "completed_at": time.time(),
+            "duration": elapsed,
+            "result": {
                 'model_path': result['model_path'],
                 'volume_mm3': result['volume_mm3'],
-                'volume_ml': result['volume_ml']
+                'volume_ml': result['volume_ml'],
+                'voxel_count': result['voxel_count'],
+                'spacing': result['spacing']
             }
-        )
+        }
 
     except Exception as e:
         logger.error(f"3D重建失败: {e}", exc_info=True)
-        task_manager.update_task(
-            task_id,
-            "failed",
-            0,
-            f"3D重建失败: {str(e)}"
-        )
+        task_status[task_id] = {
+            "status": "failed",
+            "progress": 0,
+            "message": f"3D重建失败: {str(e)}",
+            "error": str(e),
+            "started_at": task_status[task_id].get("started_at"),
+            "failed_at": time.time()
+        }
 
 @app.get("/get_3d_model/{patient_name}/{study_date}/{filename}")
 async def get_3d_model(request: Request, patient_name: str, study_date: str, filename: str):
