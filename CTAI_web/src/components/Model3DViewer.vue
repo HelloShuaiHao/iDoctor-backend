@@ -1,7 +1,10 @@
 <template>
   <div class="model-3d-viewer">
     <div class="viewer-header">
-      <h3>3D模型可视化</h3>
+      <div class="model-info">
+        <span class="model-label">当前模型:</span>
+        <span class="model-name">{{ getModelDisplayName(currentModel) }}</span>
+      </div>
       <div class="viewer-controls">
         <el-button-group size="mini">
           <el-button @click="resetCamera" icon="el-icon-refresh">重置视角</el-button>
@@ -9,11 +12,6 @@
             {{ autoRotate ? '停止旋转' : '自动旋转' }}
           </el-button>
         </el-button-group>
-        <el-select v-model="currentModel" size="mini" placeholder="选择模型" style="margin-left: 10px; width: 150px;" @change="loadModel">
-          <el-option label="腰大肌" value="psoas" />
-          <el-option label="全肌肉" value="muscle" />
-          <el-option label="椎骨" value="vertebra" />
-        </el-select>
       </div>
     </div>
 
@@ -306,6 +304,14 @@ export default {
       };
       return colors[modelType] || 0xff6b6b;
     },
+    getModelDisplayName(modelType) {
+      const names = {
+        psoas: '腰大肌',
+        muscle: '全肌肉',
+        vertebra: '椎骨'
+      };
+      return names[modelType] || '未知';
+    },
     updateModelStats(geometry) {
       const vertices = geometry.attributes.position.count;
       const faces = geometry.index ? geometry.index.count / 3 : vertices / 3;
@@ -374,13 +380,30 @@ export default {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.viewer-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 700;
+.model-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-label {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.model-name {
+  font-size: 15px;
   color: #0f172a;
+  font-weight: 700;
+  padding: 4px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 6px;
 }
 
 .viewer-controls {
