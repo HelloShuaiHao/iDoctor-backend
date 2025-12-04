@@ -361,7 +361,7 @@ export default {
 
       // 动态导入Client3DReconstructor
       const { Client3DReconstructor } = await import('@/utils/client3DReconstructor');
-      const { getMaskImages, getImageUrl } = await import('@/api');
+      const { getMaskImages, getL3ImageUrl } = await import('@/api');
 
       // 1. 获取mask图像列表
       console.log('[客户端3D] 获取mask图像列表...');
@@ -373,9 +373,9 @@ export default {
 
       console.log(`[客户端3D] 找到 ${maskData.count} 张mask图像`);
 
-      // 2. 构建mask图像URL列表
+      // 2. 构建mask图像URL列表 - 使用getL3ImageUrl因为它支持get_output_image端点
       const maskUrls = maskData.images.map(filename => {
-        return getImageUrl(this.patient, this.date, `${maskData.folder}/${filename}`);
+        return getL3ImageUrl(this.patient, this.date, maskData.folder, filename);
       });
 
       // 3. 创建重建器并执行重建
