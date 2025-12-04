@@ -35,14 +35,19 @@ export class Client3DReconstructor {
       onProgress?.(45, '正在进行Z轴插值(3倍)...');
       const interpolated = this.interpolateZ(volume, 3);
       console.log('[客户端3D] 插值后shape:', interpolated.shape);
+      console.log('[客户端3D] 插值后数据统计:', this.getDataStats(interpolated));
 
-      // 步骤4: 高斯平滑
+      // 步骤4: 高斯平滑 (减少迭代次数,避免过度平滑)
       onProgress?.(60, '正在平滑处理...');
-      const smoothed = this.gaussianSmooth(interpolated, 50);
+      const smoothed = this.gaussianSmooth(interpolated, 10);  // 从50减少到10
 
-      // 步骤5: Surface Nets生成网格
+      // 调试: 检查数据范围
+      const dataStats = this.getDataStats(smoothed);
+      console.log('[客户端3D] 平滑后数据统计:', dataStats);
+
+      // 步骤5: Surface Nets生成网格 (降低阈值)
       onProgress?.(75, '正在生成3D网格(Surface Nets)...');
-      const mesh = surfaceNets(smoothed, 0.5);
+      const mesh = surfaceNets(smoothed, 0.3);  // 从0.5降低到0.3
       console.log('[客户端3D] 网格生成完成:', {
         vertices: mesh.positions.length,
         triangles: mesh.cells.length
@@ -127,8 +132,8 @@ export class Client3DReconstructor {
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           const idx = (y * width + x) * 4;
-          // 二值化: 任何非0值视为1
-          const value = pixels[idx] > 0 ? 1.0 : 0.0;
+          // 归一化到0-1范围,保留灰度信息而不是二值化
+          const value = pixels[idx] / 255.0;
           volume.set(z, y, x, value);
         }
       }
@@ -231,6 +236,36 @@ export class Client3DReconstructor {
     }
 
     return result;
+  }
+
+  /**
+   * 获取数据统计信息
+   */
+  getDataStats(volume) {
+    const [d, h, w] = volume.shape;
+    let min = Infinity, max = -Infinity, sum = 0, count = 0;
+    let nonZeroCount = 0;
+
+    for (let z = 0; z < d; z++) {
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const val = volume.get(z, y, x);
+          if (val < min) min = val;
+          if (val > max) max = val;
+          sum += val;
+          count++;
+          if (val > 0) nonZeroCount++;
+        }
+      }
+    }
+
+    return {
+      min,
+      max,
+      mean: sum / count,
+      nonZeroCount,
+      nonZeroPercent: (nonZeroCount / count * 100).toFixed(2) + '%'
+    };
   }
 
   /**
