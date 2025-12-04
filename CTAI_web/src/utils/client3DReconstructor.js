@@ -27,9 +27,8 @@ export class Client3DReconstructor {
 
       console.log('[客户端3D] 图像加载完成，尺寸:', width, 'x', height, '深度:', imageDataList.length);
 
-      // 步骤2: 创建 Worker 并发送图像数据
-      const Worker = await import('../workers/reconstruct3d.worker.js');
-      this.worker = new Worker.default();
+      // 步骤2: 创建内联 Worker
+      this.worker = this.createWorker();
 
       return new Promise((resolve, reject) => {
         // 监听 Worker 消息
@@ -128,6 +127,197 @@ export class Client3DReconstructor {
       img.onerror = () => reject(new Error(`加载图像失败: ${url}`));
       img.src = url;
     });
+  }
+
+  /**
+   * 创建内联 Worker (使用 Blob URL)
+   */
+  createWorker() {
+    // Worker 代码作为字符串
+    const workerCode = `
+      // 动态导入 ndarray 和 isosurface (需要在构建时包含)
+      importScripts('https://unpkg.com/ndarray@1.0.19/ndarray.js');
+      importScripts('https://unpkg.com/isosurface@1.0.0/isosurface.js');
+
+      self.addEventListener('message', async (e) => {
+        const { type, data } = e.data;
+
+        if (type === 'reconstruct') {
+          try {
+            await reconstruct(data);
+          } catch (error) {
+            self.postMessage({
+              type: 'error',
+              error: error.message + ' | Stack: ' + error.stack
+            });
+          }
+        }
+      });
+
+      async function reconstruct({ imageDataList, spacing, width, height }) {
+        try {
+          console.log('[Worker] 接收到的数据:', {
+            imageDataListLength: imageDataList ? imageDataList.length : 'undefined',
+            width,
+            height
+          });
+
+          if (!imageDataList || !imageDataList.length) {
+            throw new Error('imageDataList is undefined or empty');
+          }
+
+          // 构建3D体数据
+          postProgress(30, '正在构建3D体数据...');
+          const volume = imagesToNDArray(imageDataList, width, height);
+
+          // Z轴插值
+          postProgress(45, '正在进行Z轴插值(3倍)...');
+          const interpolated = interpolateZ(volume, 3);
+
+          // 高斯平滑
+          postProgress(60, '正在平滑处理...');
+          const smoothed = gaussianSmooth(interpolated, 30);
+
+          // Surface Nets生成网格
+          postProgress(75, '正在生成3D网格...');
+          const mesh = isosurface.surfaceNets(smoothed.data, smoothed.shape, 0.05);
+
+          console.log('[Worker] 网格生成完成:', {
+            vertices: mesh.positions.length,
+            triangles: mesh.cells.length
+          });
+
+          // 转换为可传输的格式
+          postProgress(90, '正在构建几何体...');
+          const adjustedSpacing = {
+            dx: spacing.dx,
+            dy: spacing.dy,
+            dz: spacing.dz / 3
+          };
+
+          const geometry = meshToGeometryData(mesh, adjustedSpacing);
+
+          // 返回结果
+          postProgress(100, '3D重建完成!');
+          self.postMessage({
+            type: 'complete',
+            geometry: geometry
+          });
+        } catch (error) {
+          throw new Error('Reconstruct failed: ' + error.message);
+        }
+      }
+
+      function imagesToNDArray(imageDataList, width, height) {
+        const depth = imageDataList.length;
+        const data = new Float32Array(depth * height * width);
+
+        for (let z = 0; z < depth; z++) {
+          const pixels = imageDataList[z];
+          for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+              const idx = (y * width + x) * 4;
+              const value = pixels[idx] / 255.0;
+              data[z * height * width + y * width + x] = value;
+            }
+          }
+        }
+
+        return { data, shape: [depth, height, width] };
+      }
+
+      function interpolateZ(volume, factor) {
+        const [d, h, w] = volume.shape;
+        const newD = Math.floor((d - 1) * factor) + 1;
+        const newData = new Float32Array(newD * h * w);
+
+        for (let nz = 0; nz < newD; nz++) {
+          const oz = nz / factor;
+          const z0 = Math.floor(oz);
+          const z1 = Math.min(z0 + 1, d - 1);
+          const t = oz - z0;
+          const t2 = t * t;
+          const t3 = t2 * t;
+          const h00 = 2 * t3 - 3 * t2 + 1;
+          const h01 = -2 * t3 + 3 * t2;
+
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const v0 = volume.data[z0 * h * w + y * w + x];
+              const v1 = volume.data[z1 * h * w + y * w + x];
+              newData[nz * h * w + y * w + x] = h00 * v0 + h01 * v1;
+            }
+          }
+        }
+
+        return { data: newData, shape: [newD, h, w] };
+      }
+
+      function gaussianSmooth(volume, iterations) {
+        let current = volume;
+        for (let i = 0; i < iterations; i++) {
+          current = smoothOnce(current);
+          if ((i + 1) % 10 === 0) {
+            postProgress(60 + (i + 1) / iterations * 15, \`平滑迭代 \${i + 1}/\${iterations}...\`);
+          }
+        }
+        return current;
+      }
+
+      function smoothOnce(volume) {
+        const [d, h, w] = volume.shape;
+        const newData = new Float32Array(d * h * w);
+
+        for (let z = 0; z < d; z++) {
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              let sum = 0, count = 0;
+              for (let dz = -1; dz <= 1; dz++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                  for (let dx = -1; dx <= 1; dx++) {
+                    const nz = z + dz, ny = y + dy, nx = x + dx;
+                    if (nz >= 0 && nz < d && ny >= 0 && ny < h && nx >= 0 && nx < w) {
+                      sum += volume.data[nz * h * w + ny * w + nx];
+                      count++;
+                    }
+                  }
+                }
+              }
+              newData[z * h * w + y * w + x] = sum / count;
+            }
+          }
+        }
+
+        return { data: newData, shape: volume.shape };
+      }
+
+      function meshToGeometryData(mesh, spacing) {
+        const { positions, cells } = mesh;
+        const vertices = [];
+
+        for (let i = 0; i < cells.length; i++) {
+          const cell = cells[i];
+          for (let j = 0; j < 3; j++) {
+            const vtx = positions[cell[j]];
+            vertices.push(
+              vtx[0] * spacing.dx,
+              vtx[1] * spacing.dy,
+              vtx[2] * spacing.dz
+            );
+          }
+        }
+
+        return { vertices: new Float32Array(vertices) };
+      }
+
+      function postProgress(percent, message) {
+        self.postMessage({ type: 'progress', percent, message });
+      }
+    `;
+
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
+    return new Worker(workerUrl);
   }
 
   /**
