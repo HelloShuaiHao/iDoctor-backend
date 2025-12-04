@@ -22,6 +22,18 @@ self.addEventListener('message', async (e) => {
 });
 
 async function reconstruct({ imageDataList, spacing, width, height }) {
+  // 调试: 检查接收到的数据
+  console.log('[Worker] 接收到的数据:', {
+    imageDataList: imageDataList ? `${imageDataList.length} images` : 'undefined',
+    spacing,
+    width,
+    height
+  });
+
+  if (!imageDataList || !imageDataList.length) {
+    throw new Error('imageDataList is undefined or empty');
+  }
+
   // 步骤1: 从主线程接收的图像数据构建3D体数据
   postProgress(30, '正在构建3D体数据...');
   const volume = imagesToNDArray(imageDataList, width, height);

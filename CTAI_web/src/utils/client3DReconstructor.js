@@ -55,6 +55,13 @@ export class Client3DReconstructor {
         };
 
         // 发送图像数据到 Worker
+        console.log('[客户端3D] 发送数据到Worker:', {
+          imageDataListLength: imageDataList.length,
+          width,
+          height,
+          spacing
+        });
+
         this.worker.postMessage({
           type: 'reconstruct',
           data: {
