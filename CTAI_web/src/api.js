@@ -383,6 +383,25 @@ export async function check3DModels(patient, date) {
   }
 }
 
+/**
+ * 获取mask图像列表(用于浏览器端3D重建)
+ * @param {string} patient - 患者名称
+ * @param {string} date - 研究日期
+ * @param {string} maskType - mask类型 ('psoas' 或 'muscle')
+ * @returns {Promise<Object>} - 返回mask图像列表
+ */
+export async function getMaskImages(patient, date, maskType = 'psoas') {
+  try {
+    const response = await axios.get(
+      `${BASE_URL}/get_mask_images/${encodeURIComponent(patient)}/${date}/${maskType}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error('获取mask图像列表失败:', error);
+    throw error;
+  }
+}
+
 // ==================== 3D 模型 API 结束 ====================
 
 export { BASE_URL }

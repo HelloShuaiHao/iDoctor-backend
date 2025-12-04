@@ -194,16 +194,9 @@ export default {
           }
         }
 
-        // 构建3D模型URL
-        const modelUrl = this.get3DModelUrl(this.currentModel);
-        console.log('[3D加载] 模型URL:', modelUrl);
-
-        // 加载模型
-        const loader = this.getLoader(modelUrl);
-        console.log('[3D加载] 使用加载器:', loader.constructor.name);
-
-        const geometry = await this.loadGeometry(loader, modelUrl);
-        console.log('[3D加载] 几何体加载成功');
+        // **关键修改**: 使用浏览器端3D重建,而不是加载STL文件
+        console.log('[3D加载] 使用浏览器端重建...');
+        const geometry = await this.clientSide3DReconstruction();
 
         // 居中几何体
         geometry.center();
@@ -362,6 +355,52 @@ export default {
       this.camera.aspect = width / height;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(width, height);
+    },
+    async clientSide3DReconstruction() {
+      console.log('[客户端3D] 开始浏览器端重建');
+
+      // 动态导入Client3DReconstructor
+      const { Client3DReconstructor } = await import('@/utils/client3DReconstructor');
+      const { getMaskImages, getImageUrl } = await import('@/api');
+
+      // 1. 获取mask图像列表
+      console.log('[客户端3D] 获取mask图像列表...');
+      const maskData = await getMaskImages(this.patient, this.date, this.currentModel);
+
+      if (!maskData.available || maskData.images.length === 0) {
+        throw new Error('没有可用的mask图像');
+      }
+
+      console.log(`[客户端3D] 找到 ${maskData.count} 张mask图像`);
+
+      // 2. 构建mask图像URL列表
+      const maskUrls = maskData.images.map(filename => {
+        return getImageUrl(this.patient, this.date, `${maskData.folder}/${filename}`);
+      });
+
+      // 3. 创建重建器并执行重建
+      const reconstructor = new Client3DReconstructor();
+
+      // CT spacing - 根据实际情况调整
+      const spacing = {
+        dx: 0.734375,  // X轴spacing (mm)
+        dy: 0.734375,  // Y轴spacing (mm)
+        dz: 3.0        // Z轴spacing (mm)
+      };
+
+      console.log('[客户端3D] 开始重建，spacing:', spacing);
+
+      const geometry = await reconstructor.reconstruct(
+        maskUrls,
+        spacing,
+        (percent, message) => {
+          console.log(`[客户端3D] ${percent.toFixed(0)}% - ${message}`);
+          // 可以在这里更新loading文本显示进度
+        }
+      );
+
+      console.log('[客户端3D] 重建完成!');
+      return geometry;
     }
   }
 };

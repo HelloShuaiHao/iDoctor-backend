@@ -1324,6 +1324,70 @@ async def check_3d_models(request: Request, patient_name: str, study_date: str):
         "models": models
     }
 
+@app.get("/get_mask_images/{patient_name}/{study_date}/{mask_type}")
+async def get_mask_images(request: Request, patient_name: str, study_date: str, mask_type: str):
+    """
+    获取mask图像列表用于浏览器端3D重建
+
+    参数:
+        patient_name: 患者名称
+        study_date: 研究日期
+        mask_type: 掩码类型 ('psoas' 或 'muscle')
+
+    返回:
+        {
+            "available": bool,
+            "images": [str],  # 图像文件名列表
+            "count": int,
+            "mask_type": str,
+            "folder": str  # mask图像所在文件夹
+        }
+    """
+    # 获取用户ID
+    user_id = getattr(request.state, "user_id", None)
+
+    # 根据mask_type确定目录
+    output_folder = _output_dir(patient_name, study_date, user_id)
+
+    if mask_type == 'psoas':
+        mask_folder = 'major_mask'  # 腰大肌mask
+    elif mask_type == 'muscle':
+        mask_folder = 'full_mask'   # 全肌肉mask
+    else:
+        raise HTTPException(status_code=400, detail=f"不支持的mask_type: {mask_type}")
+
+    mask_dir = os.path.join(output_folder, mask_folder)
+
+    if not os.path.exists(mask_dir):
+        logger.warning(f"Mask目录不存在: {mask_dir}")
+        return {
+            "available": False,
+            "images": [],
+            "count": 0,
+            "mask_type": mask_type,
+            "folder": mask_folder
+        }
+
+    # 获取所有PNG图像并排序
+    try:
+        mask_files = sorted([
+            f for f in os.listdir(mask_dir)
+            if f.lower().endswith('.png')
+        ])
+
+        logger.info(f"找到 {len(mask_files)} 张mask图像: {patient_name}/{study_date}/{mask_type}")
+
+        return {
+            "available": len(mask_files) > 0,
+            "images": mask_files,
+            "count": len(mask_files),
+            "mask_type": mask_type,
+            "folder": mask_folder
+        }
+    except Exception as e:
+        logger.error(f"读取mask目录失败: {e}")
+        raise HTTPException(status_code=500, detail=f"读取mask目录失败: {str(e)}")
+
 # ==================== 3D重建端点结束 ====================
 
 # Mount the app with /api/ctai prefix for compatibility
