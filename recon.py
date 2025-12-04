@@ -15,33 +15,41 @@ class CT3DReconstructor:
         self.volume_info = None
         print("CT3DReconstructor 初始化完成（仅目标区域模式）")
 
-    def _create_mesh_from_mask(self, mask, level=0.5, fill_holes=True, hole_size=300.0):
+    def _create_mesh_from_mask(self, mask, level=0.5, fill_holes=True, hole_size=300.0, smooth=True, smooth_iterations=50):
         """
         从掩码创建3D网格（兼容 scikit-image 0.25+，防止重建空洞）
+
+        参数:
+            mask: 3D二值掩码
+            level: marching cubes阈值
+            fill_holes: 是否填充孔洞
+            hole_size: 孔洞填充大小
+            smooth: 是否进行平滑处理
+            smooth_iterations: 平滑迭代次数(建议20-100)
         """
         from skimage import measure
         import vtk, numpy as np
-    
+
         if np.count_nonzero(mask) == 0:
             raise ValueError("Mask为空，无法重建")
-    
+
         # ✅ 关键修改：在新版 marching_cubes 下，pad 一层边界体素
-        # 这样可以防止算法在边缘或内部零值处误判为“空气”，导致大孔
+        # 这样可以防止算法在边缘或内部零值处误判为"空气"，导致大孔
         mask = np.pad(mask, pad_width=1, mode='constant', constant_values=0)
         mask = (mask > 0).astype(np.float32)
-    
+
         # ✅ 保持原有 level 参数
         vertices, faces, _, _ = measure.marching_cubes(
             mask,
             level=level,
             spacing=self.spacing
         )
-    
+
         # === 以下部分完全保持原样 ===
         vtk_points = vtk.vtkPoints()
         for v in vertices:
             vtk_points.InsertNextPoint(v)
-    
+
         vtk_triangles = vtk.vtkCellArray()
         for f in faces:
             tri = vtk.vtkTriangle()
@@ -49,21 +57,36 @@ class CT3DReconstructor:
             tri.GetPointIds().SetId(1, int(f[1]))
             tri.GetPointIds().SetId(2, int(f[2]))
             vtk_triangles.InsertNextCell(tri)
-    
+
         mesh = vtk.vtkPolyData()
         mesh.SetPoints(vtk_points)
         mesh.SetPolys(vtk_triangles)
-    
+
+        # 1. 填充孔洞
         if fill_holes and hole_size > 0:
             hole_filler = vtk.vtkFillHolesFilter()
             hole_filler.SetInputData(mesh)
             hole_filler.SetHoleSize(hole_size)
             hole_filler.Update()
             mesh = hole_filler.GetOutput()
-    
+
+        # 2. 平滑处理 - 解决锯齿状表面问题
+        if smooth and smooth_iterations > 0:
+            smoother = vtk.vtkSmoothPolyDataFilter()
+            smoother.SetInputData(mesh)
+            smoother.SetNumberOfIterations(smooth_iterations)
+            smoother.SetRelaxationFactor(0.1)  # 控制平滑强度(0-1)
+            smoother.FeatureEdgeSmoothingOff()  # 保留特征边缘
+            smoother.BoundarySmoothingOn()     # 边界也平滑
+            smoother.Update()
+            mesh = smoother.GetOutput()
+            print(f"✅ 平滑处理完成 (迭代{smooth_iterations}次)")
+
         return mesh
 
-    def create_target_mesh(self, level=0.5, hole_size=300.0, format='stl', model_name='target_mesh'):
+    def create_target_mesh(self, level=0.5, hole_size=300.0, format='stl', model_name='target_mesh',
+                          smooth=True, smooth_iterations=50, subdivide=False, subdivide_iterations=2,
+                          decimate=False, target_reduction=0.5):
         """
         只创建目标区域网格
 
@@ -72,6 +95,12 @@ class CT3DReconstructor:
             hole_size: 孔洞填充大小
             format: 输出格式 ('stl' 或 'obj')
             model_name: 模型文件名（不含扩展名）
+            smooth: 是否平滑处理
+            smooth_iterations: 平滑迭代次数
+            subdivide: 是否进行网格细分(提高表面质量)
+            subdivide_iterations: 细分迭代次数
+            decimate: 是否进行网格抽取(减少三角形数量)
+            target_reduction: 抽取目标比例(0-1, 如0.5表示减少50%的三角形)
 
         返回:
             str: 保存的文件路径
@@ -80,8 +109,32 @@ class CT3DReconstructor:
         self.target_mesh = self._create_mesh_from_mask(
             self.target_mask,
             level=level,
-            hole_size=hole_size
+            hole_size=hole_size,
+            smooth=smooth,
+            smooth_iterations=smooth_iterations
         )
+
+        # 可选：网格细分 - 提高表面分辨率
+        if subdivide and subdivide_iterations > 0:
+            import vtk
+            subdivider = vtk.vtkLinearSubdivisionFilter()
+            subdivider.SetInputData(self.target_mesh)
+            subdivider.SetNumberOfSubdivisions(subdivide_iterations)
+            subdivider.Update()
+            self.target_mesh = subdivider.GetOutput()
+            print(f"✅ 网格细分完成 ({subdivide_iterations}次迭代)")
+
+        # 可选：网格抽取 - 减少三角形数量同时保持形状
+        if decimate and 0 < target_reduction < 1:
+            import vtk
+            decimator = vtk.vtkDecimatePro()
+            decimator.SetInputData(self.target_mesh)
+            decimator.SetTargetReduction(target_reduction)
+            decimator.PreserveTopologyOn()  # 保持拓扑结构
+            decimator.Update()
+            self.target_mesh = decimator.GetOutput()
+            print(f"✅ 网格抽取完成 (减少{target_reduction*100:.0f}%三角形)")
+
         filename = f"{model_name}.{format.lower()}"
         filepath = self._save_mesh(self.target_mesh, filename)
         print("✅ 目标区域网格创建完成！")
@@ -192,7 +245,9 @@ class CT3DReconstructor:
 #     main()
 
 # reconstruct_ct_volume
-def reconstruct_ct_volume(mask_dir, output_dir, spacing, visualize=False, format='stl', model_name='target_mesh'):
+def reconstruct_ct_volume(mask_dir, output_dir, spacing, visualize=False, format='stl', model_name='target_mesh',
+                         smooth=True, smooth_iterations=50, subdivide=False, subdivide_iterations=2,
+                         decimate=False, target_reduction=0.5):
     """
     对目标区域的二值掩码进行三维重建并计算体积
 
@@ -209,6 +264,18 @@ def reconstruct_ct_volume(mask_dir, output_dir, spacing, visualize=False, format
             输出格式 ('stl' 或 'obj')，默认 'stl'
         model_name : str
             模型文件名（不含扩展名），默认 'target_mesh'
+        smooth : bool
+            是否进行平滑处理（默认True）
+        smooth_iterations : int
+            平滑迭代次数，建议20-100（默认50）
+        subdivide : bool
+            是否进行网格细分以提高表面质量（默认False）
+        subdivide_iterations : int
+            细分迭代次数（默认2）
+        decimate : bool
+            是否进行网格抽取以减少三角形数量（默认False）
+        target_reduction : float
+            抽取目标比例(0-1)，如0.5表示减少50%的三角形（默认0.5）
 
     返回:
         dict : 包含体积信息和模型路径
@@ -248,8 +315,19 @@ def reconstruct_ct_volume(mask_dir, output_dir, spacing, visualize=False, format
         spacing=spacing
     )
 
-    # 4️⃣ 生成3D网格
-    model_path = reconstructor.create_target_mesh(level=0.5, hole_size=300.0, format=format, model_name=model_name)
+    # 4️⃣ 生成3D网格（添加平滑、细分和抽取选项）
+    model_path = reconstructor.create_target_mesh(
+        level=0.5,
+        hole_size=300.0,
+        format=format,
+        model_name=model_name,
+        smooth=smooth,
+        smooth_iterations=smooth_iterations,
+        subdivide=subdivide,
+        subdivide_iterations=subdivide_iterations,
+        decimate=decimate,
+        target_reduction=target_reduction
+    )
 
     # 5️⃣ 计算体积
     volume_mm3 = reconstructor.compute_volume()
