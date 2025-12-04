@@ -49,9 +49,26 @@ export class Client3DReconstructor {
       onProgress?.(60, '正在平滑处理...');
       const smoothed = await this.gaussianSmoothAsync(interpolated, 30, onProgress);
 
+      // 调试: 检查平滑后的数据
+      const stats = this.getDataStats(smoothed);
+      console.log('[客户端3D] 平滑后数据统计:', stats);
+
       // 步骤5: Surface Nets生成网格
       onProgress?.(75, '正在生成3D网格(Surface Nets)...');
-      const mesh = this.surfaceNets(smoothed, 0.05);
+
+      // 尝试多个阈值
+      let mesh = this.surfaceNets(smoothed, 0.01);
+      console.log('[客户端3D] 阈值0.01生成:', mesh.positions.length, '个顶点');
+
+      if (mesh.positions.length === 0) {
+        mesh = this.surfaceNets(smoothed, 0.005);
+        console.log('[客户端3D] 阈值0.005生成:', mesh.positions.length, '个顶点');
+      }
+
+      if (mesh.positions.length === 0) {
+        mesh = this.surfaceNets(smoothed, 0.001);
+        console.log('[客户端3D] 阈值0.001生成:', mesh.positions.length, '个顶点');
+      }
       console.log('[客户端3D] 网格生成完成:', {
         vertices: mesh.positions.length,
         triangles: mesh.cells.length
@@ -272,6 +289,36 @@ export class Client3DReconstructor {
    */
   yield() {
     return new Promise(resolve => setTimeout(resolve, 0));
+  }
+
+  /**
+   * 获取数据统计信息
+   */
+  getDataStats(volume) {
+    const [d, h, w] = volume.shape;
+    let min = Infinity, max = -Infinity, sum = 0, count = 0;
+    let nonZeroCount = 0;
+
+    for (let z = 0; z < d; z++) {
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const val = volume.get(z, y, x);
+          if (val < min) min = val;
+          if (val > max) max = val;
+          sum += val;
+          count++;
+          if (val > 0) nonZeroCount++;
+        }
+      }
+    }
+
+    return {
+      min,
+      max,
+      mean: sum / count,
+      nonZeroCount,
+      nonZeroPercent: (nonZeroCount / count * 100).toFixed(2) + '%'
+    };
   }
 
   /**
