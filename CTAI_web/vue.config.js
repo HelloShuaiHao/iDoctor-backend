@@ -12,5 +12,16 @@ module.exports = {
     port: 7500,
     host: '0.0.0.0',
     disableHostCheck: true // 允许所有主机访问
+  },
+  chainWebpack: config => {
+    // 支持 Web Worker
+    config.module
+      .rule('worker')
+      .test(/\.worker\.js$/)
+      .use('worker-loader')
+      .loader('worker-loader')
+      .options({
+        inline: 'fallback'
+      });
   }
 }

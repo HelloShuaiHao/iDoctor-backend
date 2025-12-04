@@ -1,13 +1,15 @@
 /**
  * 浏览器端3D重建工具
- * 使用isosurface库从mask图像直接生成Three.js几何体
+ * 使用Web Worker在后台线程执行重建,避免阻塞主线程
  */
 
 import * as THREE from 'three';
-import ndarray from 'ndarray';
-import { surfaceNets } from 'isosurface';
 
 export class Client3DReconstructor {
+  constructor() {
+    this.worker = null;
+  }
+
   /**
    * 从mask图像URL列表生成3D几何体
    * @param {Array<string>} maskImageUrls - mask图像URL数组(已排序)
@@ -17,7 +19,89 @@ export class Client3DReconstructor {
    */
   async reconstruct(maskImageUrls, spacing, onProgress) {
     try {
-      console.log('[客户端3D] 开始重建，mask图像数量:', maskImageUrls.length);
+      console.log('[客户端3D] 开始重建(使用Web Worker)，mask图像数量:', maskImageUrls.length);
+
+      // 创建 Worker
+      const Worker = await import('../workers/reconstruct3d.worker.js');
+      this.worker = new Worker.default();
+
+      return new Promise((resolve, reject) => {
+        // 监听 Worker 消息
+        this.worker.onmessage = (e) => {
+          const { type, percent, message, geometry, error } = e.data;
+
+          if (type === 'progress') {
+            onProgress?.(percent, message);
+          } else if (type === 'complete') {
+            // 从 Worker 返回的数据创建 Three.js 几何体
+            const threeGeometry = this.createThreeGeometry(geometry);
+            this.worker.terminate();
+            resolve(threeGeometry);
+          } else if (type === 'error') {
+            this.worker.terminate();
+            reject(new Error(error));
+          }
+        };
+
+        this.worker.onerror = (error) => {
+          this.worker.terminate();
+          reject(error);
+        };
+
+        // 发送重建任务到 Worker
+        this.worker.postMessage({
+          type: 'reconstruct',
+          data: {
+            maskImageUrls,
+            spacing
+          }
+        });
+      });
+    } catch (error) {
+      console.error('[客户端3D] 重建失败:', error);
+      if (this.worker) {
+        this.worker.terminate();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * 从 Worker 返回的数据创建 Three.js 几何体
+   */
+  createThreeGeometry(geometryData) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(geometryData.vertices, 3));
+
+    // 计算法线
+    geometry.computeVertexNormals();
+
+    // 居中
+    geometry.center();
+
+    // 计算边界
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+
+    console.log('[客户端3D] Three.js几何体创建完成:', {
+      vertices: geometry.attributes.position.count,
+      triangles: geometry.attributes.position.count / 3
+    });
+
+    return geometry;
+  }
+
+  // ============ 以下是旧的同步实现,保留作为fallback ============
+
+  /**
+   * 同步版本重建(fallback,不推荐使用,会阻塞主线程)
+   */
+  async reconstructSync(maskImageUrls, spacing, onProgress) {
+    try {
+      console.log('[客户端3D] 开始重建(同步模式)，mask图像数量:', maskImageUrls.length);
+
+      const ndarray = (await import('ndarray')).default;
+      const { surfaceNets } = await import('isosurface');
 
       // 步骤1: 加载所有mask图像
       onProgress?.(10, '正在加载mask图像...');
@@ -37,22 +121,22 @@ export class Client3DReconstructor {
       console.log('[客户端3D] 插值后shape:', interpolated.shape);
       console.log('[客户端3D] 插值后数据统计:', this.getDataStats(interpolated));
 
-      // 步骤4: 高斯平滑 (减少迭代次数,避免过度平滑)
+      // 步骤4: 高斯平滑 (增加迭代次数以连接稀疏区域)
       onProgress?.(60, '正在平滑处理...');
-      const smoothed = this.gaussianSmooth(interpolated, 10);  // 从50减少到10
+      const smoothed = this.gaussianSmooth(interpolated, 30);  // 增加到30次以形成连续表面
 
       // 调试: 检查数据范围
       const dataStats = this.getDataStats(smoothed);
       console.log('[客户端3D] 平滑后数据统计:', dataStats);
 
-      // 步骤5: Surface Nets生成网格 (进一步降低阈值)
+      // 步骤5: Surface Nets生成网格 (降低阈值以包含更多边缘区域)
       onProgress?.(75, '正在生成3D网格(Surface Nets)...');
 
       // 调试: 检查有多少值超过不同的阈值
-      const thresholdStats = this.getThresholdStats(smoothed, [0.1, 0.2, 0.3, 0.5]);
+      const thresholdStats = this.getThresholdStats(smoothed, [0.01, 0.05, 0.1, 0.2]);
       console.log('[客户端3D] 阈值统计:', thresholdStats);
 
-      const mesh = surfaceNets(smoothed, 0.1);  // 从0.3降低到0.1
+      const mesh = surfaceNets(smoothed, 0.05);  // 降低到0.05以捕获更多平滑后的边缘
       console.log('[客户端3D] 网格生成完成:', {
         vertices: mesh.positions.length,
         triangles: mesh.cells.length
