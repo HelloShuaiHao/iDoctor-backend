@@ -21,7 +21,13 @@ export class Client3DReconstructor {
     try {
       console.log('[客户端3D] 开始重建(使用Web Worker)，mask图像数量:', maskImageUrls.length);
 
-      // 创建 Worker
+      // 步骤1: 在主线程加载所有图像(因为Worker无法访问DOM)
+      onProgress?.(10, '正在加载mask图像...');
+      const { imageDataList, width, height } = await this.loadAllImages(maskImageUrls, onProgress);
+
+      console.log('[客户端3D] 图像加载完成，尺寸:', width, 'x', height, '深度:', imageDataList.length);
+
+      // 步骤2: 创建 Worker 并发送图像数据
       const Worker = await import('../workers/reconstruct3d.worker.js');
       this.worker = new Worker.default();
 
@@ -48,11 +54,13 @@ export class Client3DReconstructor {
           reject(error);
         };
 
-        // 发送重建任务到 Worker
+        // 发送图像数据到 Worker
         this.worker.postMessage({
           type: 'reconstruct',
           data: {
-            maskImageUrls,
+            imageDataList,
+            width,
+            height,
             spacing
           }
         });
@@ -64,6 +72,55 @@ export class Client3DReconstructor {
       }
       throw error;
     }
+  }
+
+  /**
+   * 在主线程加载所有图像并提取像素数据
+   */
+  async loadAllImages(urls, onProgress) {
+    const images = [];
+    const total = urls.length;
+
+    // 并行加载所有图像
+    for (let i = 0; i < total; i++) {
+      const img = await this.loadImage(urls[i]);
+      images.push(img);
+      const percent = 10 + (i + 1) / total * 20;
+      onProgress?.(percent, `加载图像 ${i + 1}/${total}...`);
+    }
+
+    const width = images[0].width;
+    const height = images[0].height;
+
+    // 提取所有图像的像素数据
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    const imageDataList = [];
+
+    for (let i = 0; i < images.length; i++) {
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(images[i], 0, 0);
+      const imageData = ctx.getImageData(0, 0, width, height);
+      imageDataList.push(imageData.data); // Uint8ClampedArray
+    }
+
+    return { imageDataList, width, height };
+  }
+
+  /**
+   * 加载单张图像
+   */
+  loadImage(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`加载图像失败: ${url}`));
+      img.src = url;
+    });
   }
 
   /**

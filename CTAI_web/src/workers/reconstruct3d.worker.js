@@ -21,14 +21,10 @@ self.addEventListener('message', async (e) => {
   }
 });
 
-async function reconstruct({ maskImageUrls, spacing }) {
-  // 步骤1: 加载所有mask图像
-  postProgress(10, '正在加载mask图像...');
-  const images = await loadImages(maskImageUrls);
-
-  // 步骤2: 转换为ndarray格式的3D体数据
+async function reconstruct({ imageDataList, spacing, width, height }) {
+  // 步骤1: 从主线程接收的图像数据构建3D体数据
   postProgress(30, '正在构建3D体数据...');
-  const volume = await imagesToNDArray(images);
+  const volume = imagesToNDArray(imageDataList, width, height);
   console.log('[Worker] 体数据shape:', volume.shape);
 
   // 步骤3: Z轴插值
@@ -72,50 +68,15 @@ async function reconstruct({ maskImageUrls, spacing }) {
   });
 }
 
-// 加载所有图像
-async function loadImages(urls) {
-  const images = [];
-  const total = urls.length;
-
-  for (let i = 0; i < total; i++) {
-    const img = await loadImage(urls[i]);
-    images.push(img);
-    const percent = 10 + (i + 1) / total * 20;
-    postProgress(percent, `加载图像 ${i + 1}/${total}...`);
-  }
-
-  return images;
-}
-
-// 加载单张图像
-function loadImage(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`加载图像失败: ${url}`));
-    img.src = url;
-  });
-}
-
-// 将图像数组转换为ndarray
-async function imagesToNDArray(images) {
-  const width = images[0].width;
-  const height = images[0].height;
-  const depth = images.length;
+// 将主线程传来的图像数据转换为ndarray
+function imagesToNDArray(imageDataList, width, height) {
+  const depth = imageDataList.length;
 
   const data = new Float32Array(depth * height * width);
   const volume = ndarray(data, [depth, height, width]);
 
-  const canvas = new OffscreenCanvas(width, height);
-  const ctx = canvas.getContext('2d');
-
   for (let z = 0; z < depth; z++) {
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(images[z], 0, 0);
-
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const pixels = imageData.data;
+    const pixels = imageDataList[z]; // Uint8ClampedArray from ImageData
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
