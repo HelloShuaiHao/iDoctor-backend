@@ -45,9 +45,14 @@ export class Client3DReconstructor {
       const dataStats = this.getDataStats(smoothed);
       console.log('[客户端3D] 平滑后数据统计:', dataStats);
 
-      // 步骤5: Surface Nets生成网格 (降低阈值)
+      // 步骤5: Surface Nets生成网格 (进一步降低阈值)
       onProgress?.(75, '正在生成3D网格(Surface Nets)...');
-      const mesh = surfaceNets(smoothed, 0.3);  // 从0.5降低到0.3
+
+      // 调试: 检查有多少值超过不同的阈值
+      const thresholdStats = this.getThresholdStats(smoothed, [0.1, 0.2, 0.3, 0.5]);
+      console.log('[客户端3D] 阈值统计:', thresholdStats);
+
+      const mesh = surfaceNets(smoothed, 0.1);  // 从0.3降低到0.1
       console.log('[客户端3D] 网格生成完成:', {
         vertices: mesh.positions.length,
         triangles: mesh.cells.length
@@ -266,6 +271,34 @@ export class Client3DReconstructor {
       nonZeroCount,
       nonZeroPercent: (nonZeroCount / count * 100).toFixed(2) + '%'
     };
+  }
+
+  /**
+   * 获取不同阈值下的统计信息
+   */
+  getThresholdStats(volume, thresholds) {
+    const [d, h, w] = volume.shape;
+    const stats = {};
+
+    thresholds.forEach(threshold => {
+      let count = 0;
+      for (let z = 0; z < d; z++) {
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            if (volume.get(z, y, x) >= threshold) {
+              count++;
+            }
+          }
+        }
+      }
+      const totalVoxels = d * h * w;
+      stats[`>=${threshold}`] = {
+        count,
+        percent: (count / totalVoxels * 100).toFixed(3) + '%'
+      };
+    });
+
+    return stats;
   }
 
   /**
