@@ -1,13 +1,14 @@
 /**
  * 浏览器端3D重建工具
- * 使用Web Worker在后台线程执行重建,避免阻塞主线程
+ * 使用分片处理避免阻塞主线程
  */
 
 import * as THREE from 'three';
 
 export class Client3DReconstructor {
   constructor() {
-    this.worker = null;
+    this.ndarray = null;
+    this.surfaceNets = null;
   }
 
   /**
@@ -21,9 +22,14 @@ export class Client3DReconstructor {
     try {
       console.log('[客户端3D] 开始重建(分片处理,避免阻塞)，mask图像数量:', maskImageUrls.length);
 
-      // 动态导入依赖
-      const ndarray = (await import('ndarray')).default;
-      const { surfaceNets } = await import('isosurface');
+      // 动态导入依赖(只导入一次)
+      if (!this.ndarray) {
+        this.ndarray = (await import('ndarray')).default;
+      }
+      if (!this.surfaceNets) {
+        const isosurfaceModule = await import('isosurface');
+        this.surfaceNets = isosurfaceModule.surfaceNets;
+      }
 
       // 步骤1: 加载所有mask图像
       onProgress?.(10, '正在加载mask图像...');
@@ -31,7 +37,7 @@ export class Client3DReconstructor {
 
       // 步骤2: 转换为ndarray格式的3D体数据
       onProgress?.(30, '正在构建3D体数据...');
-      const volume = await this.imagesToNDArray(images, ndarray);
+      const volume = await this.imagesToNDArray(images);
       console.log('[客户端3D] 体数据shape:', volume.shape);
 
       // 步骤3: Z轴插值
@@ -45,7 +51,7 @@ export class Client3DReconstructor {
 
       // 步骤5: Surface Nets生成网格
       onProgress?.(75, '正在生成3D网格(Surface Nets)...');
-      const mesh = surfaceNets(smoothed, 0.05);
+      const mesh = this.surfaceNets(smoothed, 0.05);
       console.log('[客户端3D] 网格生成完成:', {
         vertices: mesh.positions.length,
         triangles: mesh.cells.length
@@ -89,13 +95,13 @@ export class Client3DReconstructor {
   /**
    * 将图像数组转换为ndarray
    */
-  async imagesToNDArray(images, ndarray) {
+  async imagesToNDArray(images) {
     const width = images[0].width;
     const height = images[0].height;
     const depth = images.length;
 
     const data = new Float32Array(depth * height * width);
-    const volume = ndarray(data, [depth, height, width]);
+    const volume = this.ndarray(data, [depth, height, width]);
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -130,12 +136,11 @@ export class Client3DReconstructor {
    * Z轴插值 (分片执行)
    */
   async interpolateZAsync(volume, factor, onProgress) {
-    const ndarray = (await import('ndarray')).default;
     const [d, h, w] = volume.shape;
     const newD = Math.floor((d - 1) * factor) + 1;
 
     const newData = new Float32Array(newD * h * w);
-    const newVolume = ndarray(newData, [newD, h, w]);
+    const newVolume = this.ndarray(newData, [newD, h, w]);
 
     for (let nz = 0; nz < newD; nz++) {
       const oz = nz / factor;
@@ -187,10 +192,9 @@ export class Client3DReconstructor {
    * 单次平滑 (分片执行)
    */
   async smoothOnceAsync(volume) {
-    const ndarray = (await import('ndarray')).default;
     const [d, h, w] = volume.shape;
     const newData = new Float32Array(d * h * w);
-    const result = ndarray(newData, [d, h, w]);
+    const result = this.ndarray(newData, [d, h, w]);
 
     for (let z = 0; z < d; z++) {
       for (let y = 0; y < h; y++) {
