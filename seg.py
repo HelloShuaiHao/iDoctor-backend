@@ -1,181 +1,138 @@
-import os, time, glob, hashlib, threading, traceback, cv2, torch, gc
+import os
+import glob
+import cv2
+import torch
+import numpy as np
+import imageio.v2 as imageio
+import multiprocessing as mp
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
-from pipeline_logging import write_log
 
-def _file_md5(path):
-    try:
-        with open(path, "rb") as f:
-            import hashlib as _h
-            return _h.md5(f.read()).hexdigest()[:8]
-    except Exception:
-        return "NA"
-
-def run_nnunet_predict_and_overlay(input_dir: str,
-                                   output_dir: str,
-                                   model_dir: str,
-                                   checkpoint: str = "checkpoint_final.pth"):
-    """增加详细日志和进度 watchdog"""
+def run_nnunet_predict_and_overlay(input_dir: str, output_dir: str, model_dir: str, checkpoint: str = "checkpoint_final.pth"):
     for k in ['nnUNet_raw', 'nnUNet_preprocessed', 'nnUNet_results']:
-        if k not in os.environ:
-            os.environ[k] = os.getcwd()
+        os.environ[k] = os.environ.get(k, f"./{k}")
+        os.makedirs(os.environ[k], exist_ok=True)
 
     os.makedirs(output_dir, exist_ok=True)
-    log_root = os.path.dirname(output_dir) if os.path.dirname(output_dir) else output_dir
-    this_file = os.path.abspath(__file__)
-    write_log(log_root, f"[nnUNet] START model_dir={model_dir} checkpoint={checkpoint} input_dir={input_dir} output_dir={output_dir}")
-    write_log(log_root, f"[nnUNet] seg_py={this_file} md5={_file_md5(this_file)}")
 
-    # 模型目录快照
-    if not os.path.isdir(model_dir):
-        write_log(log_root, f"[nnUNet] MODEL_DIR_MISSING {model_dir}")
-    else:
-        items = sorted(os.listdir(model_dir))
-        write_log(log_root, f"[nnUNet] model_dir_items_count={len(items)} sample={items[:10]}")
-        for nf in [checkpoint, 'plans.json']:
-            if not any(nf in x for x in items):
-                write_log(log_root, f"[nnUNet] WARN missing_like={nf}")
+    predictor = nnUNetPredictor(
+        tile_step_size=0.5,
+        use_gaussian=True,
+        use_mirroring=True,
+        perform_everything_on_device=True,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        verbose=True,
+        verbose_preprocessing=True,
+    )
+    predictor.initialize_from_trained_model_folder(
+        model_dir,
+        use_folds="all",
+        checkpoint_name=checkpoint,
+    )
 
-    # 输入统计
-    all_png = sorted([f for f in os.listdir(input_dir) if f.endswith('.png')])
-    png_0000 = [f for f in all_png if f.endswith('_0000.png')]
-    write_log(log_root, f"[nnUNet] input_stats total_png={len(all_png)} total_0000={len(png_0000)} sample={all_png[:10]}")
-    for f in png_0000[:3]:
-        p = os.path.join(input_dir, f)
-        try:
-            img = cv2.imread(p, cv2.IMREAD_UNCHANGED)
-            if img is None:
-                write_log(log_root, f"[nnUNet] IMG_FAIL {f}")
-            else:
-                write_log(log_root, f"[nnUNet] IMG {f} shape={img.shape} dtype={img.dtype}")
-        except Exception as ie:
-            write_log(log_root, f"[nnUNet] IMG_ERR {f} {ie}")
+    # —— 目录模式！——
+    predictor.predict_from_files(
+        input_dir, 
+        output_dir,
+        save_probabilities=False,
+        num_processes_preprocessing=1,
+    )
 
-    # GPU 前显存
-    if torch.cuda.is_available():
-        try:
-            torch.cuda.empty_cache(); torch.cuda.synchronize()
-            write_log(log_root, f"[nnUNet] GPU_BEFORE {torch.cuda.memory_allocated()/1024**3:.2f}GB")
-        except Exception as ge:
-            write_log(log_root, f"[nnUNet] GPU_BEFORE_ERR {ge}")
+    print("🎯 Segmentation done.")
 
-    old_num_threads = os.environ.get('OMP_NUM_THREADS')
-    os.environ['OMP_NUM_THREADS'] = '1'
+# def clean_psoas_mask(mask_bin):
+#     """
+#     输入: 0/1 mask (np.uint8)
+#     输出: 0/1 mask
+#     """
+#     # 转为 255-based mask for connected-component correctness
+#     mask_uint8 = (mask_bin * 255).astype(np.uint8)
 
-    predictor = None
-    start_time = time.time()
-    done_flag = {"v": False}
-    timeout_seconds = 180
+#     # Step0: 连通域
+#     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask_uint8, connectivity=8)
+#     if num_labels <= 2:
+#         return mask_bin.copy()
 
-    def watchdog():
-        last_report = -1
-        while not done_flag["v"]:
-            elapsed = time.time() - start_time
-            nii_count = len(glob.glob(os.path.join(output_dir, '*.nii.gz')))
-            if nii_count != last_report or int(elapsed) % 30 == 0:
-                gpu_mem = 0.0
-                if torch.cuda.is_available():
-                    try:
-                        gpu_mem = torch.cuda.memory_allocated()/1024**3
-                    except Exception:
-                        pass
-                write_log(log_root, f"[nnUNet] PROGRESS elapsed={elapsed:.1f}s nii={nii_count} gpu_mem={gpu_mem:.2f}GB")
-                last_report = nii_count
-            if elapsed > timeout_seconds and not done_flag['v']:
-                write_log(log_root, f"[nnUNet] WATCHDOG_TIMEOUT elapsed={elapsed:.1f}s (>={timeout_seconds}s)")
-            time.sleep(5)
+#     # Step1: 面积过滤
+#     areas = stats[1:, 4]
+#     median_area = np.median(areas)
+#     area_threshold = median_area * 0.7
 
-    wd = threading.Thread(target=watchdog, daemon=True)
-    wd.start()
+#     area_filtered = np.zeros_like(mask_uint8)
+#     valid = []
+#     for i in range(1, num_labels):
+#         if stats[i, 4] >= area_threshold:
+#             area_filtered[labels == i] = 255
+#             valid.append(i)
 
-    try:
-        # 检查权重文件位置：优先 fold_all，其次根目录
-        fold_all_weight = os.path.join(model_dir, 'fold_all', checkpoint)
-        root_weight = os.path.join(model_dir, checkpoint)
-        
-        if os.path.isfile(fold_all_weight):
-            use_folds = 'all'
-            checkpoint_path = fold_all_weight
-            write_log(log_root, f"[nnUNet] checkpoint_found={fold_all_weight} (fold_all)")
-        elif os.path.isfile(root_weight):
-            use_folds = None
-            checkpoint_path = root_weight
-            write_log(log_root, f"[nnUNet] checkpoint_found={root_weight} (root)")
-        else:
-            raise RuntimeError(f"权重文件不存在: {fold_all_weight} 或 {root_weight}")
+#     # 如果过滤后 <=2 块 → 已确定目标
+#     if len(valid) <= 2:
+#         return (area_filtered > 0).astype(np.uint8)
 
-        predictor = nnUNetPredictor(
-            tile_step_size=0.5,
-            use_gaussian=True,
-            use_mirroring=True,
-            perform_everything_on_device=True,
-            device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
-            verbose=True,
-            verbose_preprocessing=True,
-        )
-        write_log(log_root, "[nnUNet] predictor_created")
-        
-        predictor.initialize_from_trained_model_folder(
-            model_dir,
-            use_folds=use_folds,
-            checkpoint_name=checkpoint,
-        )
-        write_log(log_root, "[nnUNet] model_initialized begin_predict")
-        write_log(log_root, f"[nnUNet] PREDICT_CALL input_type={type(input_dir)} is_dir={os.path.isdir(input_dir)}")
+#     # Step2: 重新连通域 + 左右分类
+#     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(area_filtered, connectivity=8)
+#     ys, xs = np.where(area_filtered > 0)
+#     if len(xs) == 0:
+#         return mask_bin.copy()
 
-        # 2. 构造 list-of-lists cases (单模态) 而不是传目录字符串
-        cases = [[os.path.join(input_dir, f)] for f in sorted(os.listdir(input_dir)) if f.endswith('_0000.png')]
-        write_log(log_root, f"[nnUNet] CASES_BUILT count={len(cases)} first={[os.path.basename(c[0]) for c in cases[:5]]}")
-        if not cases:
-            raise RuntimeError("未找到 *_0000.png 作为 nnUNet 输入")
+#     center_x = (xs.min() + xs.max()) / 2.0
 
-        # 3. 推理  
-        infer_t0 = time.time()
-        predictor.predict_from_files(
-            cases,
-            output_dir,
-            save_probabilities=False,
-            num_processes_preprocessing=1,
-            num_processes_segmentation_export=1,
-        )
-        infer_t1 = time.time()
+#     left_list, right_list = [], []
+#     for i in range(1, num_labels):
+#         cx, cy = centroids[i]
+#         area = stats[i, 4]
+#         if cx < center_x:
+#             left_list.append((i, cy, area))
+#         else:
+#             right_list.append((i, cy, area))
 
-        # 4. 等待最多 60s 收集输出文件（支持 .nii.gz 或 .png）
-        deadline = time.time() + 60
-        output_files = []
-        while time.time() < deadline:
-            # 检查 nii.gz 或 png 输出
-            nii_files = [f for f in os.listdir(output_dir) if f.endswith('.nii.gz')]
-            png_files = [f for f in os.listdir(output_dir) if f.endswith('.png') and not f.endswith('_0000.png')]
-            output_files = nii_files if nii_files else png_files
-            
-            if len(output_files) >= len(cases):
-                break
-            time.sleep(1)
-            
-        dur = time.time() - start_time
-        out_files = sorted(os.listdir(output_dir))
-        output_format = '.nii.gz' if any(f.endswith('.nii.gz') for f in output_files) else '.png'
-        write_log(log_root, f"[nnUNet] DONE duration={dur:.2f}s infer_time={infer_t1-infer_t0:.2f}s out_total={len(out_files)} output_format={output_format} output_count={len(output_files)} sample={out_files[:12]}")
-        
-        if len(output_files) == 0:
-            raise RuntimeError("推理完成但未生成输出文件 (检查权重/输入尺寸/模型配置)")
-    except Exception as e:
-        write_log(log_root, f"[nnUNet] EXCEPTION {e}")
-        traceback.print_exc()
-    finally:
-        done_flag['v'] = True
-        wd.join(timeout=1)
-        if predictor is not None:
-            del predictor
-        gc.collect()
-        if torch.cuda.is_available():
-            try:
-                torch.cuda.empty_cache(); torch.cuda.synchronize()
-                write_log(log_root, f"[nnUNet] GPU_AFTER {torch.cuda.memory_allocated()/1024**3:.2f}GB")
-            except Exception as ge2:
-                write_log(log_root, f"[nnUNet] GPU_AFTER_ERR {ge2}")
-        if old_num_threads:
-            os.environ['OMP_NUM_THREADS'] = old_num_threads
-        else:
-            os.environ.pop('OMP_NUM_THREADS', None)
-        write_log(log_root, f"[nnUNet] END total_elapsed={time.time()-start_time:.2f}s")
+#     if len(left_list) == 0 or len(right_list) == 0:
+#         keep = sorted(range(1, num_labels), key=lambda i: stats[i,4], reverse=True)[:2]
+#         result = np.zeros_like(mask_uint8)
+#         for lab in keep:
+#             result[labels == lab] = 255
+#         return (result > 0).astype(np.uint8)
+
+#     # Step3: 穷举组合 → Y差最小最佳组合
+#     best_pair = None
+#     min_diff = float('inf')
+#     for L in left_list:
+#         for R in right_list:
+#             diff = abs(L[1] - R[1])
+#             if diff < min_diff:
+#                 min_diff = diff
+#                 best_pair = (L[0], R[0])
+
+#     result = np.zeros_like(mask_uint8)
+#     for lab in best_pair:
+#         result[labels == lab] = 255
+
+#     return (result > 0).astype(np.uint8)
+
+
+# def process_psoas_folder(input_folder, output_folder):
+#     os.makedirs(output_folder, exist_ok=True)
+    
+#     for fname in os.listdir(input_folder):
+#         if not fname.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
+#             continue
+
+#         in_path = os.path.join(input_folder, fname)
+#         out_path = os.path.join(output_folder, fname)
+
+#         mask = cv2.imread(in_path, cv2.IMREAD_GRAYSCALE)
+#         if mask is None:
+#             print(f"❌ 跳过：无法读取 {fname}")
+#             continue
+
+#         mask_bin = (mask > 0).astype(np.uint8)
+#         result_bin = clean_psoas_mask(mask_bin)
+
+#         cv2.imwrite(out_path, result_bin)
+#         print(f"✅ 处理完成: {fname}")
+
+#     print("\n🎯 全部mask后处理完成 ✅")
+
+
+
+# # ✅ 使用示例
+# process_psoas_folder("D:/Med/yao", "D:/Med/yao/filterednewnew")

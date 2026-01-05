@@ -5,20 +5,61 @@ import pydicom
 from pydicom.uid import generate_uid
 from PIL import Image
 import cv2
-
+from pydicom.uid import ExplicitVRLittleEndian
 # 函数：resize and save 中间切片为DICOM
+# def resize_and_save_sagittal_as_dicom(
+#     sagittal_slice, spacing, reference_dicom_path, output_path="sagittal_midResize.dcm"
+# ):
+#     # Step 1: Compute spacing ratio
+#     spacing_z = spacing[2]  # height (Z)
+#     spacing_y = spacing[1]  # width  (Y)
+#     scale_ratio = spacing_z / spacing_y
+
+#     print("Original shape:", sagittal_slice.shape)
+#     print("Spacing Z/Y:", spacing_z, spacing_y, "→ scale ratio:", scale_ratio)
+
+#     # Step 2: Normalize and resize for physical correctness
+#     pil_img = Image.fromarray(sagittal_slice)
+#     orig_height, orig_width = sagittal_slice.shape
+#     new_height = int(orig_height * scale_ratio)
+
+#     pil_resized = pil_img.resize((orig_width, new_height), resample=Image.BILINEAR)
+#     resized_array = np.array(pil_resized).astype(np.int16)
+
+#     # Step 3: Load reference DICOM for metadata
+#     ds = pydicom.dcmread(reference_dicom_path)
+#     ds.Rows, ds.Columns = resized_array.shape
+#     ds.PixelData = resized_array.tobytes()
+
+#     # Step 4: Update DICOM metadata
+#     ds.PixelSpacing = [str(spacing_z), str(spacing_y)]
+#     ds.SliceThickness = str(spacing_z)
+#     ds.BitsStored = 16
+#     ds.BitsAllocated = 16
+#     ds.HighBit = 15
+#     ds.SamplesPerPixel = 1
+#     ds.PixelRepresentation = 1
+
+#     ds.SOPInstanceUID = generate_uid()
+#     ds.SeriesInstanceUID = generate_uid()
+#     ds.SeriesDescription = "Resized Sagittal"
+
+#     # Step 5: Save
+#     ds.save_as(output_path)
+#     return output_path
+
 def resize_and_save_sagittal_as_dicom(
     sagittal_slice, spacing, reference_dicom_path, output_path="sagittal_midResize.dcm"
 ):
     # Step 1: Compute spacing ratio
-    spacing_z = spacing[2]  # height (Z)
-    spacing_y = spacing[1]  # width  (Y)
+    spacing_z = spacing[2]  # Z
+    spacing_y = spacing[1]  # Y
     scale_ratio = spacing_z / spacing_y
 
     print("Original shape:", sagittal_slice.shape)
     print("Spacing Z/Y:", spacing_z, spacing_y, "→ scale ratio:", scale_ratio)
 
-    # Step 2: Normalize and resize for physical correctness
+    # Step 2: Resize
     pil_img = Image.fromarray(sagittal_slice)
     orig_height, orig_width = sagittal_slice.shape
     new_height = int(orig_height * scale_ratio)
@@ -26,19 +67,28 @@ def resize_and_save_sagittal_as_dicom(
     pil_resized = pil_img.resize((orig_width, new_height), resample=Image.BILINEAR)
     resized_array = np.array(pil_resized).astype(np.int16)
 
-    # Step 3: Load reference DICOM for metadata
+    # Step 3: Load reference DICOM
     ds = pydicom.dcmread(reference_dicom_path)
+
+    ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+    ds.is_little_endian = True
+    ds.is_implicit_VR = False
+
     ds.Rows, ds.Columns = resized_array.shape
     ds.PixelData = resized_array.tobytes()
 
-    # Step 4: Update DICOM metadata
-    ds.PixelSpacing = [str(spacing_z), str(spacing_y)]
-    ds.SliceThickness = str(spacing_z)
+    # Step 4: Metadata
+    ds.PixelSpacing = [
+        f"{spacing_y:.6f}",
+        f"{spacing_y:.6f}",
+    ]
+    ds.SliceThickness = f"{spacing_z:.6f}"
+
     ds.BitsStored = 16
     ds.BitsAllocated = 16
     ds.HighBit = 15
     ds.SamplesPerPixel = 1
-    ds.PixelRepresentation = 1
+    ds.PixelRepresentation = 1  # signed int16
 
     ds.SOPInstanceUID = generate_uid()
     ds.SeriesInstanceUID = generate_uid()
