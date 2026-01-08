@@ -144,13 +144,44 @@ def main(input_folder, output_folder):
 
     # 7 三维重建及体积计算
     # 体积是分开部分的体积
-    major_volume_result = reconstruct_ct_volume(major_filtered_folder, major_recon_folder, spacing, visualize=False)
-    full_volume_result = reconstruct_ct_volume(full_filtered_folder, full_recon_folder, spacing, visualize=False)
+    # 腰大肌重建（如果失败则使用默认值0）
+    try:
+        print("\n[3D重建] 开始腰大肌3D重建...")
+        major_volume_result = reconstruct_ct_volume(major_filtered_folder, major_recon_folder, spacing, visualize=False)
+        major_volume_mm3 = major_volume_result['volume_mm3']
+        print(f"[3D重建] ✅ 腰大肌重建成功: {major_volume_mm3:.2f} mm³")
+    except (ValueError, FileNotFoundError) as e:
+        print(f"[3D重建] ⚠️ 腰大肌重建失败（数据不足），将使用默认值0")
+        print(f"[3D重建]    错误详情: {str(e)}")
+        major_volume_mm3 = 0.0
+        major_volume_result = {
+            'volume_mm3': 0.0,
+            'volume_ml': 0.0,
+            'model_path': None,
+            'voxel_count': 0,
+            'spacing': spacing
+        }
 
-    # Extract numeric volume values from the result dictionaries
-    major_volume_mm3 = major_volume_result['volume_mm3']
-    full_volume_mm3 = full_volume_result['volume_mm3']
+    # 全肌肉重建（如果失败则使用默认值0）
+    try:
+        print("\n[3D重建] 开始全肌肉3D重建...")
+        full_volume_result = reconstruct_ct_volume(full_filtered_folder, full_recon_folder, spacing, visualize=False)
+        full_volume_mm3 = full_volume_result['volume_mm3']
+        print(f"[3D重建] ✅ 全肌肉重建成功: {full_volume_mm3:.2f} mm³")
+    except (ValueError, FileNotFoundError) as e:
+        print(f"[3D重建] ⚠️ 全肌肉重建失败（数据不足），将使用默认值0")
+        print(f"[3D重建]    错误详情: {str(e)}")
+        full_volume_mm3 = 0.0
+        full_volume_result = {
+            'volume_mm3': 0.0,
+            'volume_ml': 0.0,
+            'model_path': None,
+            'voxel_count': 0,
+            'spacing': spacing
+        }
+
     combo_volume_mm3 = major_volume_mm3 + full_volume_mm3
+    print(f"\n[3D重建] 总体积: {combo_volume_mm3:.2f} mm³")
 
     # 6 全肌肉 + 腰大肌一起计算
     process_all(
@@ -346,13 +377,44 @@ def continue_after_l3(input_folder, output_folder):
 
     # 7 三维重建及体积计算
     # 体积是分开部分的体积
-    major_volume_result = reconstruct_ct_volume(major_filtered_folder, major_recon_folder, spacing, visualize=False)
-    full_volume_result = reconstruct_ct_volume(full_filtered_folder, full_recon_folder, spacing, visualize=False)
+    # 腰大肌重建（如果失败则使用默认值0）
+    try:
+        print("\n[3D重建] 开始腰大肌3D重建...")
+        major_volume_result = reconstruct_ct_volume(major_filtered_folder, major_recon_folder, spacing, visualize=False)
+        major_volume_mm3 = major_volume_result['volume_mm3']
+        print(f"[3D重建] ✅ 腰大肌重建成功: {major_volume_mm3:.2f} mm³")
+    except (ValueError, FileNotFoundError) as e:
+        print(f"[3D重建] ⚠️ 腰大肌重建失败（数据不足），将使用默认值0")
+        print(f"[3D重建]    错误详情: {str(e)}")
+        major_volume_mm3 = 0.0
+        major_volume_result = {
+            'volume_mm3': 0.0,
+            'volume_ml': 0.0,
+            'model_path': None,
+            'voxel_count': 0,
+            'spacing': spacing
+        }
 
-    # Extract numeric volume values from the result dictionaries
-    major_volume_mm3 = major_volume_result['volume_mm3']
-    full_volume_mm3 = full_volume_result['volume_mm3']
+    # 全肌肉重建（如果失败则使用默认值0）
+    try:
+        print("\n[3D重建] 开始全肌肉3D重建...")
+        full_volume_result = reconstruct_ct_volume(full_filtered_folder, full_recon_folder, spacing, visualize=False)
+        full_volume_mm3 = full_volume_result['volume_mm3']
+        print(f"[3D重建] ✅ 全肌肉重建成功: {full_volume_mm3:.2f} mm³")
+    except (ValueError, FileNotFoundError) as e:
+        print(f"[3D重建] ⚠️ 全肌肉重建失败（数据不足），将使用默认值0")
+        print(f"[3D重建]    错误详情: {str(e)}")
+        full_volume_mm3 = 0.0
+        full_volume_result = {
+            'volume_mm3': 0.0,
+            'volume_ml': 0.0,
+            'model_path': None,
+            'voxel_count': 0,
+            'spacing': spacing
+        }
+
     combo_volume_mm3 = major_volume_mm3 + full_volume_mm3
+    print(f"\n[3D重建] 总体积: {combo_volume_mm3:.2f} mm³")
 
     # 6 全肌肉 + 腰大肌一起计算
     process_all(

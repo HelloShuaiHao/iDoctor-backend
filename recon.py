@@ -293,8 +293,20 @@ def reconstruct_ct_volume(mask_dir, output_dir, spacing, visualize=False, format
 
     # 2️⃣ 读取所有mask切片并堆叠成3D体数据
     mask_files = sorted([f for f in os.listdir(mask_dir) if f.lower().endswith(".png")])
+
+    # ⚠️ 检查mask文件数量
     if not mask_files:
-        raise ValueError(f"未找到mask文件: {mask_dir}")
+        raise ValueError(f"❌ 3D重建失败: 未找到任何mask文件 ({mask_dir})")
+
+    MIN_SLICES_FOR_3D = 3  # 至少需要3个切片才能重建
+    if len(mask_files) < MIN_SLICES_FOR_3D:
+        raise ValueError(
+            f"❌ 3D重建失败: mask切片数量不足 (需要至少{MIN_SLICES_FOR_3D}个，实际{len(mask_files)}个)\n"
+            f"   路径: {mask_dir}\n"
+            f"   文件: {mask_files}"
+        )
+
+    print(f"📂 找到 {len(mask_files)} 个mask文件，开始读取...")
 
     mask_volume = []
     for f in mask_files:
@@ -304,6 +316,13 @@ def reconstruct_ct_volume(mask_dir, output_dir, spacing, visualize=False, format
             continue
         img = (img > 0).astype(np.float32)
         mask_volume.append(img)
+
+    # 检查成功读取的mask数量
+    if len(mask_volume) < MIN_SLICES_FOR_3D:
+        raise ValueError(
+            f"❌ 3D重建失败: 成功读取的mask切片数量不足 (需要至少{MIN_SLICES_FOR_3D}个，实际{len(mask_volume)}个)\n"
+            f"   路径: {mask_dir}"
+        )
 
     mask_volume = np.stack(mask_volume, axis=0)
     print(f"✅ Mask volume shape: {mask_volume.shape}, nonzero voxels: {np.count_nonzero(mask_volume)}")
