@@ -73,16 +73,33 @@ class AuthenticatedSession:
         full_url = f"{self.base_url}{url}"
         
         # 第一次尝试
-        resp = requests.request(method, full_url, **kwargs)
+        try:
+            resp = requests.request(method, full_url, **kwargs)
+        except Exception as e:
+            print(f"[请求异常] {method} {full_url}: {e}")
+            raise
 
-        # 如果是401，并且我们有refresh token，尝试刷新并重试
-        if resp.status_code == 401 and self.refresh_token:
-            if self._refresh_tokens():
-                # 更新header并重试
-                headers["Authorization"] = f"Bearer {self.access_token}"
-                kwargs["headers"] = headers
-                print(f"[重试] 使用新Token再次请求: {method} {full_url}")
-                resp = requests.request(method, full_url, **kwargs)
+        # 如果是401，尝试刷新token并重试
+        if resp.status_code == 401:
+            print(f"[认证失败] {method} {full_url}: 收到401响应")
+            if self.refresh_token:
+                print("[认证] 尝试使用refresh token刷新...")
+                if self._refresh_tokens():
+                    # 更新header并重试
+                    headers["Authorization"] = f"Bearer {self.access_token}"
+                    kwargs["headers"] = headers
+                    print(f"[重试] 使用新Token再次请求: {method} {full_url}")
+                    try:
+                        resp = requests.request(method, full_url, **kwargs)
+                        if resp.status_code == 401:
+                            print(f"[认证失败] 刷新后仍然收到401，可能需要重新登录")
+                    except Exception as e:
+                        print(f"[重试异常] {e}")
+                        raise
+                else:
+                    print("[认证失败] 刷新token失败，可能需要重新登录")
+            else:
+                print("[认证失败] 没有refresh token，无法自动刷新")
         
         return resp
 
@@ -101,6 +118,9 @@ def wait_for_task(session: AuthenticatedSession, task_id: str, interval=5, timeo
     """轮询任务状态直到完成或超时"""
     url = f"/task_status/{task_id}"
     start = time.time()
+    consecutive_failures = 0
+    max_failures = 5  # 最多连续失败5次就退出
+    
     while True:
         try:
             resp = session.request("GET", url, timeout=10)
@@ -108,16 +128,33 @@ def wait_for_task(session: AuthenticatedSession, task_id: str, interval=5, timeo
                 data = resp.json()
                 status = data.get("status", "")
                 print(f"    [状态] {task_id}: {status}")
+                consecutive_failures = 0  # 重置失败计数
                 if status in ("completed", "failed", "error"):
                     return status
+            elif resp.status_code == 401:
+                print(f"    [认证失败] {task_id}: 状态码 {resp.status_code}, 尝试重新登录...")
+                consecutive_failures += 1
+                # 尝试重新登录
+                if session.login():
+                    print("    [认证] 重新登录成功，继续查询")
+                    consecutive_failures = 0
+                else:
+                    print("    [认证] 重新登录失败")
+                    if consecutive_failures >= max_failures:
+                        return "auth_failed"
             else:
                 print(f"    [查询失败] {task_id}: 状态码 {resp.status_code}, 响应: {resp.text}")
-                # 如果持续查询失败，可能需要一个退出机制
-                if status in ("failed", "error"):
-                     return status
+                consecutive_failures += 1
+                if consecutive_failures >= max_failures:
+                    print(f"    [终止] {task_id}: 连续失败{consecutive_failures}次，停止查询")
+                    return "query_failed"
 
         except Exception as e:
             print(f"    [查询异常] {e}")
+            consecutive_failures += 1
+            if consecutive_failures >= max_failures:
+                print(f"    [终止] {task_id}: 连续异常{consecutive_failures}次，停止查询")
+                return "exception"
 
         if time.time() - start > timeout:
             print(f"    [超时] {task_id}")
