@@ -93,7 +93,7 @@ PASSWORD = "shuaihaopwd"
 # --- 认证配置结束 ---
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_ROOT = "/media/bygpu/c61f8350-02db-4a47-88ca-3121e00c63cc/model-code/data/2f685df1-0d89-4909-a8f3-d9bfa81a2d4d"
+DATA_ROOT = "/media/bygpu/c61f8350-02db-4a47-88ca-3121e00c63cc1/model-code/data/2f685df1-0d89-4909-a8f3-d9bfa81a2d4d"
 BASE_URL = "http://localhost:4200"
 
 
