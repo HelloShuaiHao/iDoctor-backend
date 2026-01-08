@@ -5,6 +5,22 @@ import { Message, MessageBox } from 'element-ui'
 const BASE_URL = process.env.VUE_APP_BASE_URL || "http://localhost:4200"
 const AUTH_BASE_URL = process.env.VUE_APP_AUTH_BASE_URL || "http://localhost:9001"
 
+// 防止重复刷新token的标识
+let isRefreshing = false
+let failedQueue = []
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error)
+    } else {
+      resolve(token)
+    }
+  })
+
+  failedQueue = []
+}
+
 // 请求拦截器：自动添加 JWT token
 axios.interceptors.request.use(
   config => {
@@ -29,24 +45,46 @@ axios.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
 
+      // 如果正在刷新token，将请求加入队列
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        }).then(token => {
+          originalRequest.headers.Authorization = `Bearer ${token}`
+          return axios(originalRequest)
+        }).catch(err => {
+          return Promise.reject(err)
+        })
+      }
+
       try {
-        // 尝试刷新 token
         const refreshToken = localStorage.getItem('refresh_token')
         if (!refreshToken) {
           throw new Error('No refresh token')
         }
 
-        // FastAPI expects query parameter
-        const response = await axios.post(`${AUTH_BASE_URL}/refresh?refresh_token=${encodeURIComponent(refreshToken)}`)
+        isRefreshing = true
+
+        // FastAPI expects query parameter - 修正API路径
+        const response = await axios.post(`${AUTH_BASE_URL}/auth/refresh?refresh_token=${encodeURIComponent(refreshToken)}`)
 
         // 更新 token
-        localStorage.setItem('access_token', response.data.access_token)
+        const newAccessToken = response.data.access_token
+        localStorage.setItem('access_token', newAccessToken)
         localStorage.setItem('refresh_token', response.data.refresh_token)
 
+        // 处理队列中的请求
+        processQueue(null, newAccessToken)
+
         // 重试原请求
-        originalRequest.headers.Authorization = `Bearer ${response.data.access_token}`
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
         return axios(originalRequest)
       } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError)
+
+        // 处理队列中的请求，全部失败
+        processQueue(refreshError, null)
+
         // 刷新失败，清除 token 并跳转登录
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
@@ -58,6 +96,8 @@ axios.interceptors.response.use(
         }, 1500)
 
         return Promise.reject(refreshError)
+      } finally {
+        isRefreshing = false
       }
     }
 
