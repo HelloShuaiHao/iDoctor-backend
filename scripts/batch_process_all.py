@@ -44,8 +44,9 @@ class AuthenticatedSession:
             refresh_url = f"{self.auth_url}/auth/refresh"
             print("[认证] Access Token已过期或无效，正在刷新...")
             try:
-                # The refresh endpoint expects a POST with the token in the body
-                resp = requests.post(refresh_url, json={"refresh_token": self.refresh_token}, timeout=10)
+                # 后端期望refresh_token作为查询参数，不是request body
+                refresh_url_with_token = f"{refresh_url}?refresh_token={self.refresh_token}"
+                resp = requests.post(refresh_url_with_token, timeout=10)
                 if resp.status_code == 200:
                     new_tokens = resp.json()
                     self.access_token = new_tokens.get("access_token")
@@ -120,6 +121,8 @@ def wait_for_task(session: AuthenticatedSession, task_id: str, interval=5, timeo
     start = time.time()
     consecutive_failures = 0
     max_failures = 5  # 最多连续失败5次就退出
+    processing_count = 0  # 连续processing状态的计数
+    max_processing = 20   # 如果连续processing超过100次（约8分钟），强制检查
     
     while True:
         try:
@@ -129,8 +132,32 @@ def wait_for_task(session: AuthenticatedSession, task_id: str, interval=5, timeo
                 status = data.get("status", "")
                 print(f"    [状态] {task_id}: {status}")
                 consecutive_failures = 0  # 重置失败计数
+                
                 if status in ("completed", "failed", "error"):
                     return status
+                elif status == "processing":
+                    processing_count += 1
+                    if processing_count > max_processing:
+                        print(f"    [警告] {task_id}: 连续processing {processing_count}次，可能状态更新有问题")
+                        # 检查一下是否真的完成了但状态没有更新
+                        print(f"    [检查] {task_id}: 查询所有任务状态进行对比...")
+                        try:
+                            list_resp = session.request("GET", "/list_tasks", timeout=10)
+                            if list_resp.status_code == 200:
+                                all_tasks = list_resp.json()
+                                current_task = all_tasks.get("tasks", {}).get(task_id, {})
+                                print(f"    [对比] {task_id}: 从/list_tasks获取的状态: {current_task.get('status', 'unknown')}")
+                                if current_task.get("status") in ("completed", "failed", "error"):
+                                    print(f"    [发现] {task_id}: 任务实际已完成，但/task_status接口返回错误状态")
+                                    return current_task.get("status", "completed")
+                        except Exception as e:
+                            print(f"    [检查异常] {e}")
+                        
+                        # 如果长期processing，可以选择返回timeout或继续等待
+                        return "stuck_processing"
+                else:
+                    processing_count = 0  # 重置processing计数
+                    
             elif resp.status_code == 401:
                 print(f"    [认证失败] {task_id}: 状态码 {resp.status_code}, 尝试重新登录...")
                 consecutive_failures += 1
@@ -156,9 +183,15 @@ def wait_for_task(session: AuthenticatedSession, task_id: str, interval=5, timeo
                 print(f"    [终止] {task_id}: 连续异常{consecutive_failures}次，停止查询")
                 return "exception"
 
-        if time.time() - start > timeout:
-            print(f"    [超时] {task_id}")
+        elapsed = time.time() - start
+        if elapsed > timeout:
+            print(f"    [超时] {task_id}: 已等待 {elapsed:.0f} 秒")
             return "timeout"
+            
+        # 显示已等待时间，每分钟显示一次
+        if int(elapsed) % 60 == 0 and elapsed > 0:
+            print(f"    [等待中] {task_id}: 已等待 {elapsed:.0f} 秒, 状态: {status if 'status' in locals() else 'unknown'}")
+            
         time.sleep(interval)
 
 def trigger_all_process(sleep_sec=4):
@@ -187,8 +220,23 @@ def trigger_all_process(sleep_sec=4):
             print(f"  状态: {resp.status_code} {resp_json}")
             task_id = resp_json.get("task_id")
             if task_id:
+                print(f"  [开始等待] {task_id}: 开始状态轮询...")
                 status = wait_for_task(session, task_id)
                 print(f"  [完成] {task_id}: {status}")
+                
+                # 如果是stuck状态，尝试获取所有任务列表进行调试
+                if status in ("stuck_processing", "timeout"):
+                    print(f"  [调试] 获取所有任务状态...")
+                    try:
+                        list_resp = session.request("GET", "/list_tasks", timeout=10)
+                        if list_resp.status_code == 200:
+                            all_tasks = list_resp.json()
+                            current_task = all_tasks.get("tasks", {}).get(task_id, {})
+                            print(f"  [调试] 当前任务实际状态: {current_task}")
+                        else:
+                            print(f"  [调试] 无法获取任务列表: {list_resp.status_code}")
+                    except Exception as e:
+                        print(f"  [调试] 获取任务列表异常: {e}")
             else:
                 print("  [警告] 未返回 task_id")
         except Exception as e:
