@@ -3,6 +3,33 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import shutil, os, time, threading, hashlib, json
 import logging
+import signal
+import traceback
+
+# 限制底层 C++ 多线程，避免 "terminate called without an active exception" 错误
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
+import torch
+torch.set_num_threads(1)
+
+# 调试：捕获关闭信号的来源
+def _debug_signal_handler(signum, frame):
+    sig_name = signal.Signals(signum).name
+    print(f"\n{'='*60}")
+    print(f"[DEBUG SIGNAL] 收到信号: {sig_name} (signum={signum})")
+    print(f"[DEBUG SIGNAL] 调用栈:")
+    traceback.print_stack(frame)
+    print(f"{'='*60}\n")
+    # 调用原来的处理器
+    raise KeyboardInterrupt()
+
+# 注册信号处理器（调试用）
+signal.signal(signal.SIGTERM, _debug_signal_handler)
+signal.signal(signal.SIGINT, _debug_signal_handler)
 
 # 配置日志
 logging.basicConfig(
@@ -685,14 +712,87 @@ async def api_continue_after_l3(
         patient_root = _patient_root(patient_name, study_date, user_id)
         input_folder = os.path.join(patient_root, "input")
         output_folder = os.path.join(patient_root, "output")
-        
+
         print(f"[API] 提交后台任务: {task_id}")
         print(f"[API] Input folder: {input_folder}")
         print(f"[API] Output folder: {output_folder}")
-        
-        # 提交后台任务
-        background_tasks.add_task(_run_continue_after_l3, task_id, input_folder, output_folder)
-        
+
+        # 使用独立子进程运行，完全隔离 CUDA/PyTorch 状态
+        # 避免 C++ terminate 错误
+        import subprocess
+        import threading
+
+        def run_in_subprocess():
+            try:
+                # 使用 subprocess 运行 continue_after_l3
+                cmd = [
+                    "python", "-c",
+                    f"""
+import os, sys
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+sys.path.insert(0, "{os.getcwd()}")
+from all_new import continue_after_l3
+result = continue_after_l3("{input_folder}", "{output_folder}")
+print("SUBPROCESS_RESULT:", result)
+"""
+                ]
+
+                task_status[task_id]["progress"] = 10
+                task_status[task_id]["message"] = "正在处理..."
+
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    cwd=os.getcwd()
+                )
+
+                # 实时读取输出
+                result_line = None
+                for line in proc.stdout:
+                    print(f"[子进程] {line.rstrip()}")
+                    if line.startswith("SUBPROCESS_RESULT:"):
+                        result_line = line
+
+                proc.wait()
+
+                if proc.returncode == 0:
+                    task_status[task_id] = {
+                        "status": "completed",
+                        "progress": 100,
+                        "message": "处理完成",
+                        "result": result_line,
+                        "started_at": task_status[task_id].get("started_at"),
+                        "completed_at": time.time(),
+                    }
+                    print(f"[后台任务 {task_id}] 处理完成")
+                else:
+                    task_status[task_id] = {
+                        "status": "failed",
+                        "progress": 0,
+                        "message": f"子进程退出码: {proc.returncode}",
+                        "started_at": task_status[task_id].get("started_at"),
+                        "failed_at": time.time(),
+                    }
+                    print(f"[后台任务 {task_id}] 处理失败: 退出码 {proc.returncode}")
+            except Exception as e:
+                import traceback
+                tb = traceback.format_exc()
+                print(f"[后台任务 {task_id}] 异常: {e}\n{tb}")
+                task_status[task_id] = {
+                    "status": "failed",
+                    "progress": 0,
+                    "message": f"处理失败: {str(e)}",
+                    "error": str(e),
+                    "started_at": task_status[task_id].get("started_at"),
+                    "failed_at": time.time(),
+                }
+
+        thread = threading.Thread(target=run_in_subprocess, daemon=True)
+        thread.start()
+
         return {
             "status": "submitted",
             "task_id": task_id,

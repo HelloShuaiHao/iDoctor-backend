@@ -29,12 +29,12 @@ def run_nnunet_predict_and_overlay(input_dir: str, output_dir: str, model_dir: s
         checkpoint_name=checkpoint,
     )
 
-    # —— 目录模式！——
-    predictor.predict_from_files(
-        input_dir, 
+    # —— 使用顺序处理模式，完全避免多进程 ——
+    # predict_from_files_sequential 不使用任何多进程，避免与 FastAPI/uvicorn 冲突
+    predictor.predict_from_files_sequential(
+        input_dir,
         output_dir,
         save_probabilities=False,
-        num_processes_preprocessing=1,
     )
 
     print("🎯 Segmentation done.")
