@@ -11,7 +11,7 @@ sys.path.insert(0, PROJECT_ROOT)
 # 导入处理函数
 from all_new import main  # 主处理函数在all_new.py中
 
-DATA_ROOT = "/media/bygpu/c61f8350-02db-4a47-88ca-3121e00c63cc1/model-code/data/2f685df1-0d89-4909-a8f3-d9bfa81a2d4d"
+DATA_ROOT = os.path.join(PROJECT_ROOT, "data", "2f685df1-0d89-4909-a8f3-d9bfa81a2d4d")
 
 def process_single_patient(input_folder, output_folder, result_queue):
     """单独进程处理单个患者，将结果放入队列"""

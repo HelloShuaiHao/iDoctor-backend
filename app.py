@@ -521,58 +521,72 @@ async def process_case(
         lock.release()
 
 def _run_main_process(task_id: str, input_folder: str, output_folder: str):
-    """后台任务：执行 main 全流程 (加调试日志)"""
-    start = time.time()
-    snap_before = _resource_snapshot() if DEBUG_ENABLED else {}
-    if DEBUG_ENABLED:
-        _append_log_line(output_folder, f"[TASK {task_id}] ===== 开始 main() input={input_folder}")
-        inp_sig = _hash_input_dir(input_folder) if os.path.isdir(input_folder) else {"error": "input_missing"}
-        _append_log_line(output_folder, f"[TASK {task_id}] 输入签名 {json.dumps(inp_sig, ensure_ascii=False)}")
-        _append_log_line(output_folder, f"[TASK {task_id}] 资源快照(before) {snap_before}")
-        # 列出 output 目录现有子目录(第二次运行时最关键)
-        if os.path.isdir(output_folder):
-            existing = os.listdir(output_folder)
-            _append_log_line(output_folder, f"[TASK {task_id}] 现有output子项目: {existing}")
+    """后台任务：执行 main 全流程 (使用子进程隔离)"""
     try:
+        # 使用 subprocess 运行 main
+        cmd = [
+            "python", "-c",
+            f"""
+import os, sys
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+sys.path.insert(0, "{os.getcwd()}")
+from all_new import main
+result = main("{input_folder}", "{output_folder}")
+print("SUBPROCESS_RESULT:", result)
+"""
+        ]
+
         task_status[task_id]["progress"] = 10
         task_status[task_id]["message"] = "正在处理..."
 
-        # 彻底清理 full_overlay 目录
-        full_overlay_dir = os.path.join(output_folder, "full_overlay")
-        if os.path.isdir(full_overlay_dir):
-            for f in os.listdir(full_overlay_dir):
-                file_path = os.path.join(full_overlay_dir, f)
-                if os.path.isfile(file_path):
-                    try:
-                        os.remove(file_path)
-                    except Exception:
-                        pass
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=os.getcwd()
+        )
 
-        main(input_folder, output_folder)
-        elapsed = time.time() - start
-        if DEBUG_ENABLED:
-            snap_after = _resource_snapshot()
-            _append_log_line(output_folder, f"[TASK {task_id}] main() 完成 耗时={elapsed:.2f}s 资源after={snap_after}")
-        task_status[task_id] = {
-            "status": "completed",
-            "progress": 100,
-            "message": "全流程处理完成",
-            "output_dir": output_folder,
-            "started_at": task_status[task_id].get("started_at"),
-            "completed_at": time.time(),
-            "duration": elapsed
-        }
+        # 实时读取输出
+        result_line = None
+        for line in proc.stdout:
+            print(f"[子进程] {line.rstrip()}")
+            if line.startswith("SUBPROCESS_RESULT:"):
+                result_line = line
+
+        proc.wait()
+
+        if proc.returncode == 0:
+            task_status[task_id] = {
+                "status": "completed",
+                "progress": 100,
+                "message": "处理完成",
+                "result": result_line,
+                "started_at": task_status[task_id].get("started_at"),
+                "completed_at": time.time(),
+            }
+            print(f"[后台任务 {task_id}] 处理完成")
+        else:
+            task_status[task_id] = {
+                "status": "failed",
+                "progress": 0,
+                "message": f"子进程退出码: {proc.returncode}",
+                "started_at": task_status[task_id].get("started_at"),
+                "failed_at": time.time(),
+            }
+            print(f"[后台任务 {task_id}] 处理失败: 退出码 {proc.returncode}")
     except Exception as e:
+        import traceback
         tb = traceback.format_exc()
-        if DEBUG_ENABLED:
-            _append_log_line(output_folder, f"[TASK {task_id}] 异常: {e}\n{tb}")
+        print(f"[后台任务 {task_id}] 异常: {e}\n{tb}")
         task_status[task_id] = {
             "status": "failed",
             "progress": 0,
             "message": f"处理失败: {str(e)}",
             "error": str(e),
             "started_at": task_status[task_id].get("started_at"),
-            "failed_at": time.time()
+            "failed_at": time.time(),
         }
 
 # 返回所有文件夹的 病人-日期 列表
